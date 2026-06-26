@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { Eye, EyeSlash, ShieldWarning } from '@phosphor-icons/react';
 import toast from 'react-hot-toast';
+import logo from '../../assets/logo.png';
 
 export const Login: React.FC = () => {
   const { login } = useApp();
@@ -79,8 +80,8 @@ export const Login: React.FC = () => {
     <div className="space-y-6">
       {/* Brand Header */}
       <div className="text-center space-y-2 select-none">
-        <div className="flex items-center justify-center gap-2">
-          <span className="text-brand-gold text-3xl font-mono">☕</span>
+        <div className="flex items-center justify-center gap">
+          <span className="text-brand-gold text-2xl font-bold font-mono"><img width='50px' src={logo}/></span>
           <span className="text-brand-dark-green font-bold text-2xl tracking-wide">Derba</span>
         </div>
         <h2 className="text-[20px] font-semibold text-brand-dark-green font-sans">

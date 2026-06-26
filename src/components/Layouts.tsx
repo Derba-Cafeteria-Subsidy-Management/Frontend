@@ -15,6 +15,7 @@ import {
   WifiHigh,
   WifiSlash
 } from '@phosphor-icons/react';
+import logo from '../assets/logo.png';
 
 // ================= AUTH LAYOUT =================
 export const AuthLayout: React.FC = () => {
@@ -68,7 +69,7 @@ export const CashierLayout: React.FC = () => {
       <header className="h-[64px] border-b border-brand-light-green px-6 flex items-center justify-between bg-brand-white select-none">
         {/* Left: Logo */}
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/cashier')}>
-          <span className="text-brand-gold text-2xl font-bold font-mono">☕</span>
+          <span className="text-brand-gold text-2xl font-bold font-mono"><img width='50px' src={logo}/></span>
           <span className="text-brand-dark-green font-semibold text-lg font-sans tracking-wide">Derba Cafeteria</span>
         </div>
 
@@ -247,7 +248,7 @@ const BaseAdminLayout: React.FC<SidebarProps> = ({ title, navItems }) => {
         <div>
           {/* Logo Brand Area */}
           <div className="p-6 border-b border-brand-light-green/30 flex items-center gap-2">
-            <span className="text-brand-gold text-2xl font-bold font-mono">☕</span>
+            <span className="text-brand-gold text-2xl font-bold font-mono"><img width='50px' src={logo}/></span>
             <span className="text-brand-dark-green font-semibold font-sans tracking-wide">Derba Cafeteria</span>
           </div>
 
@@ -343,6 +344,7 @@ export const AdminLayout: React.FC = () => {
     { label: 'Menu Items', path: '/admin/menu', icon: ForkKnife },
     { label: 'Correction Adjudications', path: '/admin/corrections', icon: CheckSquare },
     { label: 'Reports Hub', path: '/admin/reports', icon: FileText },
+    { label: 'Audit Logs', path: '/admin/audit', icon: Database },
   ];
 
   return <BaseAdminLayout title="Admin Portal" navItems={adminNav} />;

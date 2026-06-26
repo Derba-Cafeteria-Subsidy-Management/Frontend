@@ -22,6 +22,7 @@ import { CorrectionRequests } from './pages/cashier/CorrectionRequests';
 
 // Admin Pages
 import { AdminDashboard } from './pages/admin/AdminDashboard';
+import { AdminAuditLogs } from './pages/admin/AuditLogs';
 import { EmployeeManagement } from './pages/admin/EmployeeManagement';
 import { MenuManagement } from './pages/admin/MenuManagement';
 import { CorrectionAdjudication } from './pages/admin/CorrectionAdjudication';
@@ -140,6 +141,7 @@ function App() {
           <Route path="menu" element={<MenuManagement />} />
           <Route path="corrections" element={<CorrectionAdjudication />} />
           <Route path="reports" element={<ReportsHub />} />
+          <Route path="audit" element={<AdminAuditLogs />} />
         </Route>
 
         {/* Super Admin Configuration Routes */}
