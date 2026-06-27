@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db, type Employee } from '../../db/db';
-import { MagnifyingGlass, Plus, Fingerprint, UploadSimple, FileCsv } from '@phosphor-icons/react';
+import { MagnifyingGlass, Plus, Fingerprint, UploadSimple, FileCsv, X } from '@phosphor-icons/react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 
@@ -16,6 +16,8 @@ export const EmployeeManagement: React.FC = () => {
   const [formDept, setFormDept] = useState('Engineering');
   const [formStatus, setFormStatus] = useState<'Active' | 'Inactive'>('Active');
   const [formPhoto, setFormPhoto] = useState('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80');
+  const [formPhotoFile, setFormPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [formFingerprint, setFormFingerprint] = useState(false);
   
   // Registration simulation state
@@ -27,8 +29,170 @@ export const EmployeeManagement: React.FC = () => {
   const [importData, setImportData] = useState<any[]>([]);
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
+  const fetchEmployees = async () => {
+    try {
+      const list = await db.employees.toArray();
+      setEmployees(list);
+      if (list.length > 0 && !selectedEmp && !isNew) {
+        handleSelectEmployee(list[0]);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    fetchEmployees();
+  }, []);
+
+  const handleSelectEmployee = (emp: Employee) => {
+    setIsNew(false);
+    setSelectedEmp(emp);
+    setFormId(emp.id);
+    setFormName(emp.name);
+    setFormDept(emp.department);
+    setFormStatus(emp.status);
+    setFormPhoto(emp.photo);
+    setFormPhotoFile(null);
+    setPhotoPreview(null);
+    setFormFingerprint(emp.fingerprintRegistered);
+  };
+
+  const handleCreateNewClick = () => {
+    setIsNew(true);
+    setSelectedEmp(null);
+    setPhotoPreview(null);
+    setFormPhotoFile(null);
+    
+    const nextNum = employees.length + 129;
+    setFormId(`EMP-${nextNum}`);
+    setFormName('');
+    setFormDept('Engineering');
+    setFormStatus('Active');
+    setFormPhoto('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80');
+    setFormFingerprint(false);
+  };
+
+  // Photo upload handlers
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      toast.error('Please upload a valid image file (JPG, PNG, GIF, WEBP)');
+      return;
+    }
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Image size should be less than 2MB');
+      return;
+    }
+
+    setFormPhotoFile(file);
+    
+    // Create preview URL
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setPhotoPreview(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+    
+    toast.success('Photo uploaded successfully!');
+  };
+
+  const handleRemovePhoto = () => {
+    setFormPhotoFile(null);
+    setPhotoPreview(null);
+    if (photoInputRef.current) {
+      photoInputRef.current.value = '';
+    }
+    // Set to default photo
+    setFormPhoto('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80');
+    toast.success('Photo removed');
+  };
+
+  // Convert file to base64 for storage
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const handleRegisterFingerprint = () => {
+    setRegisteringBiometric(true);
+    toast.loading('Place finger on scanner terminal...', { id: 'fp-scan' });
+    
+    setTimeout(() => {
+      setRegisteringBiometric(false);
+      setFormFingerprint(true);
+      toast.success('Fingerprint templates recorded successfully!', { id: 'fp-scan' });
+    }, 2000);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formName.trim()) {
+      toast.error('Please enter Employee Full Name');
+      return;
+    }
+
+    try {
+      let photoUrl = formPhoto;
+      
+      // If there's a new photo file, convert to base64 and store
+      if (formPhotoFile) {
+        photoUrl = await fileToBase64(formPhotoFile);
+      }
+
+      const empData: Employee = {
+        id: formId,
+        name: formName.trim(),
+        department: formDept,
+        status: formStatus,
+        photo: photoUrl,
+        fingerprintRegistered: formFingerprint,
+        fingerprintTemplate: formFingerprint ? `fingerprint_template_${formId.toLowerCase()}` : undefined
+      };
+
+      await db.employees.put(empData);
+      
+      await db.auditLogs.add({
+        timestamp: new Date(),
+        user: 'admin',
+        action: isNew ? 'Create Employee' : 'Update Employee',
+        entity: 'Employee',
+        entityId: formId,
+        details: JSON.stringify({ 
+          name: empData.name, 
+          department: empData.department, 
+          status: empData.status,
+          hasPhoto: !!formPhotoFile
+        })
+      });
+
+      toast.success(isNew ? 'Employee registered successfully!' : 'Changes saved successfully!');
+      
+      setIsNew(false);
+      setFormPhotoFile(null);
+      setPhotoPreview(null);
+      await fetchEmployees();
+      handleSelectEmployee(empData);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to save employee profile.');
+    }
+  };
+
+  // Excel Import Functions
   const handleFileUpload = (file: File) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -48,7 +212,6 @@ export const EmployeeManagement: React.FC = () => {
     reader.readAsArrayBuffer(file);
   };
 
-  // Handle file input change
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -56,7 +219,6 @@ export const EmployeeManagement: React.FC = () => {
     }
   };
 
-  // Drag and drop handlers
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -85,7 +247,6 @@ export const EmployeeManagement: React.FC = () => {
     const files = e.dataTransfer.files;
     if (files.length > 0) {
       const file = files[0];
-      // Check if it's an Excel or CSV file
       const validTypes = [
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'application/vnd.ms-excel',
@@ -102,130 +263,23 @@ export const EmployeeManagement: React.FC = () => {
     }
   };
 
-  const fetchEmployees = async () => {
-    try {
-      const list = await db.employees.toArray();
-      setEmployees(list);
-      if (list.length > 0 && !selectedEmp && !isNew) {
-        handleSelectEmployee(list[0]);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  useEffect(() => {
-    fetchEmployees();
-  }, []);
-
-  const handleSelectEmployee = (emp: Employee) => {
-    setIsNew(false);
-    setSelectedEmp(emp);
-    setFormId(emp.id);
-    setFormName(emp.name);
-    setFormDept(emp.department);
-    setFormStatus(emp.status);
-    setFormPhoto(emp.photo);
-    setFormFingerprint(emp.fingerprintRegistered);
-  };
-
-  const handleCreateNewClick = () => {
-    setIsNew(true);
-    setSelectedEmp(null);
-    
-    const nextNum = employees.length + 129;
-    setFormId(`EMP-${nextNum}`);
-    setFormName('');
-    setFormDept('Engineering');
-    setFormStatus('Active');
-    setFormPhoto('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80');
-    setFormFingerprint(false);
-  };
-
-  const handleRegisterFingerprint = () => {
-    setRegisteringBiometric(true);
-    toast.loading('Place finger on scanner terminal...', { id: 'fp-scan' });
-    
-    setTimeout(() => {
-      setRegisteringBiometric(false);
-      setFormFingerprint(true);
-      toast.success('Fingerprint templates recorded successfully!', { id: 'fp-scan' });
-    }, 2000);
-  };
-
-  const handleSimulatePhotoUpload = () => {
-    const photos = [
-      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&h=150&q=80',
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&h=150&q=80',
-      'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=150&h=150&q=80',
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&h=150&q=80',
-      'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&h=150&q=80'
-    ];
-    const randPhoto = photos[Math.floor(Math.random() * photos.length)];
-    setFormPhoto(randPhoto);
-    toast.success('Photo updated!');
-  };
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formName.trim()) {
-      toast.error('Please enter Employee Full Name');
-      return;
-    }
-
-    try {
-      const empData: Employee = {
-        id: formId,
-        name: formName.trim(),
-        department: formDept,
-        status: formStatus,
-        photo: formPhoto,
-        fingerprintRegistered: formFingerprint,
-        fingerprintTemplate: formFingerprint ? `fingerprint_template_${formId.toLowerCase()}` : undefined
-      };
-
-      await db.employees.put(empData);
-      
-      await db.auditLogs.add({
-        timestamp: new Date(),
-        user: 'admin',
-        action: isNew ? 'Create Employee' : 'Update Employee',
-        entity: 'Employee',
-        entityId: formId,
-        details: JSON.stringify({ name: empData.name, department: empData.department, status: empData.status })
-      });
-
-      toast.success(isNew ? 'Employee registered successfully!' : 'Changes saved successfully!');
-      
-      setIsNew(false);
-      await fetchEmployees();
-      handleSelectEmployee(empData);
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to save employee profile.');
-    }
-  };
-
   const validateImportData = (data: any[]) => {
     const errors: string[] = [];
     const requiredFields = ['Name', 'Department', 'Status'];
     
     data.forEach((row, index) => {
-      const rowNum = index + 2; // +2 for header and 0-index
+      const rowNum = index + 2;
         
-      // Check required fields
       requiredFields.forEach(field => {
         if (!row[field]) {
           errors.push(`Row ${rowNum}: Missing "${field}"`);
         }
       });
 
-      // Validate status
       if (row.Status && !['Active', 'Inactive'].includes(row.Status)) {
         errors.push(`Row ${rowNum}: Status must be "Active" or "Inactive"`);
       }
 
-      // Validate department (optional - can add more validation)
       if (row.Department && typeof row.Department !== 'string') {
         errors.push(`Row ${rowNum}: Department must be text`);
       }
@@ -260,12 +314,9 @@ export const EmployeeManagement: React.FC = () => {
 
       for (const row of importData) {
         try {
-          // Generate unique ID
           let id = row['Employee ID'] || row['ID'] || `EMP-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
           
-          // Check if ID already exists
           if (existingIds.has(id)) {
-            // Generate alternative ID
             id = `EMP-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
           }
 
@@ -290,7 +341,6 @@ export const EmployeeManagement: React.FC = () => {
         }
       }
 
-      // Audit log
       await db.auditLogs.add({
         timestamp: new Date(),
         user: 'admin',
@@ -307,11 +357,11 @@ export const EmployeeManagement: React.FC = () => {
 
       toast.success(`Successfully imported ${imported} employees${failed > 0 ? `, ${failed} failed` : ''}`);
       
-      // Refresh employee list
       await fetchEmployees();
       setShowImportModal(false);
       setImportData([]);
       setImportErrors([]);
+      setIsDragging(false);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -332,14 +382,6 @@ export const EmployeeManagement: React.FC = () => {
         'Status': 'Active',
         'Fingerprint': 'Yes',
         'Photo': 'https://example.com/photo.jpg'
-      },
-      {
-        'Employee ID': 'EMP-00124',
-        'Name': 'Jane Smith',
-        'Department': 'Human Resources',
-        'Status': 'Active',
-        'Fingerprint': 'No',
-        'Photo': 'https://example.com/photo2.jpg'
       }
     ];
 
@@ -468,23 +510,56 @@ export const EmployeeManagement: React.FC = () => {
               )}
             </div>
 
+            {/* Photo Upload Section */}
             <div className="flex items-center gap-6">
-              <img 
-                src={formPhoto} 
-                alt="Profile Preview" 
-                className="w-[96px] h-[96px] rounded-full object-cover border-2 border-brand-light-green shadow-sm"
-              />
-              <div className="space-y-1">
-                <button
-                  type="button"
-                  onClick={handleSimulatePhotoUpload}
-                  className="text-brand-gold text-xs font-semibold hover:underline"
-                >
-                  Update Photo
-                </button>
+              <div className="relative">
+                <img 
+                  src={photoPreview || formPhoto} 
+                  alt="Profile Preview" 
+                  className="w-[96px] h-[96px] rounded-full object-cover border-2 border-brand-light-green shadow-sm"
+                />
+                {formPhotoFile && (
+                  <div className="absolute -top-1 -right-1 bg-brand-dark-green text-brand-white text-[8px] px-1.5 py-0.5 rounded-full">
+                    New
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="file"
+                    ref={photoInputRef}
+                    accept="image/*"
+                    onChange={handlePhotoUpload}
+                    className="hidden"
+                    id="photo-upload"
+                  />
+                  <label
+                    htmlFor="photo-upload"
+                    className="cursor-pointer text-brand-gold text-xs font-semibold hover:underline flex items-center gap-1"
+                  >
+                    <UploadSimple size={14} />
+                    Upload Photo
+                  </label>
+                  {(formPhotoFile || photoPreview) && (
+                    <button
+                      type="button"
+                      onClick={handleRemovePhoto}
+                      className="text-brand-error-red text-xs font-semibold hover:underline flex items-center gap-1"
+                    >
+                      <X size={14} />
+                      Remove
+                    </button>
+                  )}
+                </div>
                 <p className="text-brand-gray-neutral text-[10px]">
-                  Supports JPG, PNG formats. Max file size: 2MB.
+                  JPG, PNG, GIF, WEBP. Max 2MB.
                 </p>
+                {formPhotoFile && (
+                  <p className="text-brand-dark-green text-[10px] font-medium">
+                    {formPhotoFile.name} ({(formPhotoFile.size / 1024).toFixed(1)} KB)
+                  </p>
+                )}
               </div>
             </div>
 
@@ -640,7 +715,6 @@ export const EmployeeManagement: React.FC = () => {
             </div>
 
             <div className="space-y-4">
-              {/* Upload Area with Drag and Drop */}
               <div
                 className={`border-2 border-dashed rounded-[8px] p-8 text-center transition-all duration-200 ${
                   isDragging 
@@ -681,7 +755,6 @@ export const EmployeeManagement: React.FC = () => {
                   )}
                 </label>
                 
-                {/* Show filename if uploaded */}
                 {importData.length > 0 && (
                   <div className="mt-3 text-xs text-brand-dark-green bg-brand-light-green/20 px-3 py-1.5 rounded-full inline-flex items-center gap-2">
                     <FileCsv size={14} className="text-brand-gold" />
@@ -690,7 +763,6 @@ export const EmployeeManagement: React.FC = () => {
                 )}
               </div>
 
-              {/* Template Download */}
               <div className="flex items-center justify-between">
                 <button
                   onClick={downloadTemplate}
@@ -704,7 +776,6 @@ export const EmployeeManagement: React.FC = () => {
                 </span>
               </div>
 
-              {/* Import Preview */}
               {importData.length > 0 && (
                 <div className="border border-gray-200 rounded-[8px] p-4 max-h-[200px] overflow-auto">
                   <div className="flex items-center justify-between mb-2">
@@ -749,7 +820,6 @@ export const EmployeeManagement: React.FC = () => {
                 </div>
               )}
 
-              {/* Error List */}
               {importErrors.length > 0 && (
                 <div className="bg-brand-error-red/5 border border-brand-error-red/30 rounded-[8px] p-3 max-h-[100px] overflow-auto">
                   <span className="text-xs font-medium text-brand-error-red block mb-1">Errors:</span>
@@ -761,7 +831,6 @@ export const EmployeeManagement: React.FC = () => {
                 </div>
               )}
 
-              {/* Action Buttons */}
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => {
