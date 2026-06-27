@@ -14,7 +14,6 @@ export interface Employee {
 export interface MenuItem {
   id?: number;
   name: string;
-  session: 'Breakfast' | 'Lunch' | 'Dinner';
   price: number;
   isActive: boolean;
   effectiveDate: string;
@@ -99,7 +98,7 @@ class CafeteriaDatabase extends Dexie {
     
     this.version(1).stores({
       employees: 'id, name, department, status, fingerprintRegistered',
-      menuItems: '++id, name, session, price, isActive, effectiveDate',
+      menuItems: '++id, name, price, isActive, effectiveDate',
       transactions: 'id, employeeId, employeeName, session, timestamp, status, isSynced',
       correctionRequests: 'id, transactionId, employeeName, session, status, cashierName, timestamp',
       auditLogs: '++id, timestamp, user, action, entity',
@@ -179,21 +178,21 @@ export async function seedDatabase() {
   // 2. Seed Menu Items
   const initialMenuItems: MenuItem[] = [
     // Breakfast
-    { name: 'Ful with Egg', session: 'Breakfast', price: 100.00, isActive: true, effectiveDate: '2026-06-01' },
-    { name: 'Special Firfir', session: 'Breakfast', price: 80.00, isActive: true, effectiveDate: '2026-06-01' },
-    { name: 'Spiced Tea', session: 'Breakfast', price: 15.00, isActive: true, effectiveDate: '2026-06-01' },
-    { name: 'Omelet', session: 'Breakfast', price: 75.00, isActive: false, effectiveDate: '2026-06-01' }, // Inactive
+    { name: 'Ful with Egg', price: 100.00, isActive: true, effectiveDate: '2026-06-01' },
+    { name: 'Special Firfir', price: 80.00, isActive: true, effectiveDate: '2026-06-01' },
+    { name: 'Spiced Tea', price: 15.00, isActive: true, effectiveDate: '2026-06-01' },
+    { name: 'Omelet', price: 75.00, isActive: false, effectiveDate: '2026-06-01' }, // Inactive
 
     // Lunch
-    { name: 'Shiro Wot', session: 'Lunch', price: 90.00, isActive: true, effectiveDate: '2026-06-01' },
-    { name: 'Special Beyaynetu', session: 'Lunch', price: 120.00, isActive: true, effectiveDate: '2026-06-01' },
-    { name: 'Beef Tibs', session: 'Lunch', price: 200.00, isActive: true, effectiveDate: '2026-06-01' },
-    { name: 'Chicken Cutlet', session: 'Lunch', price: 180.00, isActive: false, effectiveDate: '2026-06-01' }, // Inactive
+    { name: 'Shiro Wot', price: 90.00, isActive: true, effectiveDate: '2026-06-01' },
+    { name: 'Special Beyaynetu', price: 120.00, isActive: true, effectiveDate: '2026-06-01' },
+    { name: 'Beef Tibs', price: 200.00, isActive: true, effectiveDate: '2026-06-01' },
+    { name: 'Chicken Cutlet', price: 180.00, isActive: false, effectiveDate: '2026-06-01' }, // Inactive
 
     // Dinner
-    { name: 'Tagliatelle Pasta', session: 'Dinner', price: 110.00, isActive: true, effectiveDate: '2026-06-01' },
-    { name: 'Rice with Veggies', session: 'Dinner', price: 95.00, isActive: true, effectiveDate: '2026-06-01' },
-    { name: 'Chicken Soup', session: 'Dinner', price: 130.00, isActive: true, effectiveDate: '2026-06-01' }
+    { name: 'Tagliatelle Pasta',  price: 110.00, isActive: true, effectiveDate: '2026-06-01' },
+    { name: 'Rice with Veggies', price: 95.00, isActive: true, effectiveDate: '2026-06-01' },
+    { name: 'Chicken Soup', price: 130.00, isActive: true, effectiveDate: '2026-06-01' }
   ];
   await db.menuItems.bulkPut(initialMenuItems);
 

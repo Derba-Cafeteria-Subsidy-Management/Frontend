@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, type MenuItem } from '../../db/db';
-import { Plus, ToggleLeft, ToggleRight, Info, Calendar } from '@phosphor-icons/react';
+import { Plus, ToggleLeft, ToggleRight, Info, Calendar, Trash } from '@phosphor-icons/react';
 import toast from 'react-hot-toast';
 
 export const MenuManagement: React.FC = () => {
@@ -10,13 +10,15 @@ export const MenuManagement: React.FC = () => {
   // Add Item Modal
   const [showAddModal, setShowAddModal] = useState(false);
   const [newItemName, setNewItemName] = useState('');
-  const [newItemSession, setNewItemSession] = useState<'Breakfast' | 'Lunch' | 'Dinner'>('Breakfast');
   const [newItemPrice, setNewItemPrice] = useState('');
 
   // Update Price Modal
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [newPrice, setNewPrice] = useState('');
   const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Delete Confirmation Modal
+  const [itemToDelete, setItemToDelete] = useState<MenuItem | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -38,25 +40,32 @@ export const MenuManagement: React.FC = () => {
 
   // Toggle Active/Inactive state
   const handleToggleActive = async (item: MenuItem) => {
+    const originalItem = { ...item };
+    const newStatus = !item.isActive;
+    
+    setMenuItems(prev => 
+      prev.map(i => i.id === item.id ? { ...i, isActive: newStatus } : i)
+    );
+    
     try {
-      const newStatus = !item.isActive;
       await db.menuItems.update(item.id!, { isActive: newStatus });
       
-      // Audit Log
       await db.auditLogs.add({
         timestamp: new Date(),
         user: 'admin',
         action: newStatus ? 'Activate Menu Item' : 'Deactivate Menu Item',
         entity: 'MenuItem',
         entityId: String(item.id),
-        details: JSON.stringify({ name: item.name, session: item.session })
+        details: JSON.stringify({ name: item.name })
       });
 
       toast.success(`${item.name} is now ${newStatus ? 'Active' : 'Inactive'}`);
-      fetchMenuItems();
     } catch (err) {
       console.error(err);
       toast.error('Failed to change status.');
+      setMenuItems(prev => 
+        prev.map(i => i.id === item.id ? originalItem : i)
+      );
     }
   };
 
@@ -75,38 +84,35 @@ export const MenuManagement: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const createdItem: MenuItem = {
+      const createdItem: Omit<MenuItem, 'id'> = {
         name: newItemName.trim(),
-        session: newItemSession,
         price: priceNum,
         isActive: true,
         effectiveDate: new Date().toISOString().split('T')[0]
       };
 
       const addedId = await db.menuItems.add(createdItem);
+      
+      const newItem = { ...createdItem, id: addedId };
+      setMenuItems(prev => [...prev, newItem]);
 
-      // Audit Log
       await db.auditLogs.add({
         timestamp: new Date(),
         user: 'admin',
         action: 'Create Menu Item',
         entity: 'MenuItem',
         entityId: String(addedId),
-        details: JSON.stringify({ name: createdItem.name, session: createdItem.session, price: createdItem.price })
+        details: JSON.stringify({ name: createdItem.name, price: createdItem.price })
       });
 
-      toast.success(`${newItemName} added to ${newItemSession} menu!`);
+      toast.success(`${newItemName} added to menu!`);
       setShowAddModal(false);
-      
-      // Reset Form
       setNewItemName('');
       setNewItemPrice('');
-      setNewItemSession('Breakfast');
-      
-      fetchMenuItems();
     } catch (err) {
       console.error(err);
       toast.error('Failed to create menu item.');
+      fetchMenuItems();
     } finally {
       setIsSubmitting(false);
     }
@@ -125,6 +131,15 @@ export const MenuManagement: React.FC = () => {
       return;
     }
 
+    const originalItem = { ...selectedItem };
+    
+    setMenuItems(prev => 
+      prev.map(i => i.id === selectedItem.id 
+        ? { ...i, price: priceNum, effectiveDate } 
+        : i
+      )
+    );
+    
     setIsSubmitting(true);
     try {
       await db.menuItems.update(selectedItem.id!, { 
@@ -132,7 +147,6 @@ export const MenuManagement: React.FC = () => {
         effectiveDate: effectiveDate
       });
 
-      // Audit Log
       await db.auditLogs.add({
         timestamp: new Date(),
         user: 'admin',
@@ -150,10 +164,49 @@ export const MenuManagement: React.FC = () => {
       toast.success(`Price updated for ${selectedItem.name} to ${priceNum.toFixed(2)} ETB`);
       setSelectedItem(null);
       setNewPrice('');
-      fetchMenuItems();
     } catch (err) {
       console.error(err);
       toast.error('Failed to update price');
+      setMenuItems(prev => 
+        prev.map(i => i.id === originalItem.id ? originalItem : i)
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Delete Menu Item
+  const handleDeleteItem = async () => {
+    if (!itemToDelete) return;
+
+    setIsSubmitting(true);
+    try {
+      // Store the item info before deleting (for audit log)
+      const { id, name, price } = itemToDelete;
+
+      // Optimistically remove from UI
+      setMenuItems(prev => prev.filter(i => i.id !== id));
+      setItemToDelete(null);
+
+      // Delete from database
+      await db.menuItems.delete(id!);
+
+      // Audit Log
+      await db.auditLogs.add({
+        timestamp: new Date(),
+        user: 'admin',
+        action: 'Delete Menu Item',
+        entity: 'MenuItem',
+        entityId: String(id),
+        details: JSON.stringify({ name, price })
+      });
+
+      toast.success(`${name} has been deleted from the menu.`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to delete menu item.');
+      // Rollback - refetch to restore the item
+      fetchMenuItems();
     } finally {
       setIsSubmitting(false);
     }
@@ -168,7 +221,7 @@ export const MenuManagement: React.FC = () => {
             Menu Management
           </h1>
           <p className="text-brand-gray-neutral text-sm mt-2">
-            Configure cafeteria menu registry listings, price splits, and scheduling sessions
+            Configure cafeteria menu registry listings and price splits
           </p>
         </div>
 
@@ -199,7 +252,7 @@ export const MenuManagement: React.FC = () => {
             return (
               <div 
                 key={item.id}
-                className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between"
+                className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between group"
               >
                 {/* Header detail */}
                 <div className="flex items-start justify-between">
@@ -207,23 +260,31 @@ export const MenuManagement: React.FC = () => {
                     <h3 className="text-brand-dark-green font-bold text-lg leading-tight">
                       {item.name}
                     </h3>
-                    <span className="inline-block bg-brand-light-green text-brand-dark-green text-[10px] font-semibold px-2 py-0.5 rounded uppercase select-none">
-                      {item.session}
-                    </span>
                   </div>
 
-                  {/* Active Toggle Switch */}
-                  <button
-                    onClick={() => handleToggleActive(item)}
-                    className="focus:outline-none select-none"
-                    title={item.isActive ? 'Deactivate item' : 'Activate item'}
-                  >
-                    {item.isActive ? (
-                      <ToggleRight size={32} weight="fill" className="text-brand-dark-green" />
-                    ) : (
-                      <ToggleLeft size={32} className="text-brand-gray-neutral" />
-                    )}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {/* Delete Button */}
+                    <button
+                      onClick={() => setItemToDelete(item)}
+                      className="text-brand-gray-neutral hover:text-red-500 transition-colors p-1 rounded opacity-0 group-hover:opacity-100 focus:opacity-100"
+                      title="Delete item"
+                    >
+                      <Trash size={20} />
+                    </button>
+
+                    {/* Active Toggle Switch */}
+                    <button
+                      onClick={() => handleToggleActive(item)}
+                      className="focus:outline-none select-none"
+                      title={item.isActive ? 'Deactivate item' : 'Activate item'}
+                    >
+                      {item.isActive ? (
+                        <ToggleRight size={32} weight="fill" className="text-brand-dark-green" />
+                      ) : (
+                        <ToggleLeft size={32} className="text-brand-gray-neutral" />
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Footer price & update link */}
@@ -254,7 +315,7 @@ export const MenuManagement: React.FC = () => {
       {/* ADD MENU ITEM MODAL */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-brand-white rounded-[12px] p-6 max-w-[440px] w-full border border-[rgba(50,100,50,0.15)] shadow-xl space-y-5 animate-scanner-pulse/0">
+          <div className="bg-brand-white rounded-[12px] p-6 max-w-[440px] w-full border border-[rgba(50,100,50,0.15)] shadow-xl space-y-5">
             
             <div className="flex items-center justify-between border-b border-gray-100 pb-3 select-none">
               <h3 className="text-brand-dark-green font-semibold text-[18px]">
@@ -270,7 +331,6 @@ export const MenuManagement: React.FC = () => {
 
             <form onSubmit={handleCreateItem} className="space-y-4">
               
-              {/* Name */}
               <div className="space-y-1.5">
                 <label className="block text-[13px] font-medium text-brand-dark-green">
                   Item Name
@@ -285,23 +345,6 @@ export const MenuManagement: React.FC = () => {
                 />
               </div>
 
-              {/* Session */}
-              <div className="space-y-1.5">
-                <label className="block text-[13px] font-medium text-brand-dark-green">
-                  Meal Session
-                </label>
-                <select
-                  value={newItemSession}
-                  onChange={(e) => setNewItemSession(e.target.value as any)}
-                  className="w-full h-[44px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer"
-                >
-                  <option value="Breakfast">Breakfast</option>
-                  <option value="Lunch">Lunch</option>
-                  <option value="Dinner">Dinner</option>
-                </select>
-              </div>
-
-              {/* Price */}
               <div className="space-y-1.5">
                 <label className="block text-[13px] font-medium text-brand-dark-green">
                   Initial Price (ETB)
@@ -317,7 +360,6 @@ export const MenuManagement: React.FC = () => {
                 />
               </div>
 
-              {/* Submit */}
               <button
                 type="submit"
                 disabled={isSubmitting}
@@ -334,7 +376,7 @@ export const MenuManagement: React.FC = () => {
       {/* UPDATE PRICE MODAL */}
       {selectedItem && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-brand-white rounded-[12px] p-6 max-w-[440px] w-full border border-[rgba(50,100,50,0.15)] shadow-xl space-y-5 animate-scanner-pulse/0">
+          <div className="bg-brand-white rounded-[12px] p-6 max-w-[440px] w-full border border-[rgba(50,100,50,0.15)] shadow-xl space-y-5">
             
             <div className="flex items-center justify-between border-b border-gray-100 pb-3 select-none">
               <h3 className="text-brand-dark-green font-semibold text-[18px]">
@@ -361,7 +403,6 @@ export const MenuManagement: React.FC = () => {
 
             <form onSubmit={handleUpdatePrice} className="space-y-4">
               
-              {/* New Price */}
               <div className="space-y-1.5">
                 <label className="block text-[13px] font-medium text-brand-dark-green">
                   New Price Rate (ETB)
@@ -377,7 +418,6 @@ export const MenuManagement: React.FC = () => {
                 />
               </div>
 
-              {/* Effective Date Picker */}
               <div className="space-y-1.5">
                 <label className="block text-[13px] font-medium text-brand-dark-green flex items-center gap-1 select-none">
                   <Calendar size={16} />
@@ -392,7 +432,6 @@ export const MenuManagement: React.FC = () => {
                 />
               </div>
 
-              {/* Safety notice info box */}
               <div className="bg-brand-light-green/20 border-l-4 border-brand-light-green p-3 rounded-r-[8px] text-[11px] leading-relaxed text-brand-dark-green select-none flex gap-2">
                 <Info size={16} className="shrink-0 mt-0.5" />
                 <span>
@@ -400,7 +439,6 @@ export const MenuManagement: React.FC = () => {
                 </span>
               </div>
 
-              {/* Submit */}
               <button
                 type="submit"
                 disabled={isSubmitting}
@@ -410,6 +448,73 @@ export const MenuManagement: React.FC = () => {
               </button>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {itemToDelete && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-brand-white rounded-[12px] p-6 max-w-[420px] w-full border border-brand-light-green/30 shadow-xl space-y-5">
+            
+            <div className="flex items-center justify-between border-b border-brand-light-green/30 pb-3 select-none">
+              <h3 className="text-brand-dark-green font-semibold text-[18px]">
+                Delete Menu Item
+              </h3>
+              <button 
+                onClick={() => setItemToDelete(null)}
+                className="text-brand-gray-neutral hover:text-brand-dark-green font-medium text-lg focus:outline-none transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-sm text-brand-gray-neutral">
+                Are you sure you want to delete <strong className="text-brand-dark-green">{itemToDelete.name}</strong>?
+              </p>
+              
+              <div className="bg-brand-light-green/10 border border-brand-light-green/30 rounded-[8px] p-3 text-xs space-y-1.5 select-none">
+                <div className="flex justify-between">
+                  <span className="text-brand-gray-neutral">Item:</span>
+                  <span className="text-brand-dark-green font-bold">{itemToDelete.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-brand-gray-neutral">Current Price:</span>
+                  <span className="text-brand-dark-green font-semibold">{itemToDelete.price.toFixed(2)} ETB</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-brand-gray-neutral">Status:</span>
+                  <span className={itemToDelete.isActive ? 'text-green-600' : 'text-brand-error-red'}>
+                    {itemToDelete.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-brand-error-red/5 border-l-4 border-brand-error-red p-3 rounded-r-[8px] text-[11px] leading-relaxed select-none flex gap-2">
+                <Info size={16} className="shrink-0 mt-0.5 text-brand-error-red" />
+                <span className="text-brand-error-red/90">
+                  <strong>Warning:</strong> This action cannot be undone. All data associated with this item will be permanently removed.
+                </span>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setItemToDelete(null)}
+                className="flex-1 h-[44px] border border-brand-gray-neutral/20 text-brand-gray-neutral rounded-[8px] font-medium text-sm hover:bg-brand-light-green/10 hover:border-brand-dark-green/30 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteItem}
+                disabled={isSubmitting}
+                className="flex-1 h-[44px] bg-brand-error-red text-brand-white rounded-[8px] font-medium text-sm hover:bg-brand-error-red/90 transition disabled:opacity-50"
+              >
+                {isSubmitting ? 'Deleting...' : 'Delete Item'}
+              </button>
+            </div>
+
           </div>
         </div>
       )}

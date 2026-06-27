@@ -106,9 +106,7 @@ export const CashierFlow: React.FC = () => {
       const fetchMenus = async () => {
         setIsLoadingMenu(true);
         const items = await db.menuItems
-          .where('session')
-          .equals(selectedSession)
-          .and(item => item.isActive)
+          .filter(item => item.isActive)
           .toArray();
         setMenuItems(items);
         setIsLoadingMenu(false);
