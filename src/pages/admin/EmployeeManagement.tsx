@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db, type Employee } from '../../db/db';
-import { MagnifyingGlass, Plus, Fingerprint } from '@phosphor-icons/react';
+import { MagnifyingGlass, Plus, Fingerprint, UploadSimple, FileCsv } from '@phosphor-icons/react';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
 
 export const EmployeeManagement: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -19,12 +20,92 @@ export const EmployeeManagement: React.FC = () => {
   
   // Registration simulation state
   const [registeringBiometric, setRegisteringBiometric] = useState(false);
+  
+  // Import states
+  const [isImporting, setIsImporting] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importData, setImportData] = useState<any[]>([]);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleFileUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = new Uint8Array(event.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+        
+        setImportData(jsonData);
+        validateImportData(jsonData);
+      } catch (error) {
+        console.error('Error reading file:', error);
+        toast.error('Failed to read the file. Please check the format.');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  // Handle file input change
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileUpload(file);
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragging) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const file = files[0];
+      // Check if it's an Excel or CSV file
+      const validTypes = [
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
+        'text/csv'
+      ];
+      const validExtensions = ['.xlsx', '.xls', '.csv'];
+      const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+      
+      if (validTypes.includes(file.type) || validExtensions.includes(fileExtension)) {
+        handleFileUpload(file);
+      } else {
+        toast.error('Please upload an Excel or CSV file');
+      }
+    }
+  };
 
   const fetchEmployees = async () => {
     try {
       const list = await db.employees.toArray();
       setEmployees(list);
-      // Select first employee initially if none selected
       if (list.length > 0 && !selectedEmp && !isNew) {
         handleSelectEmployee(list[0]);
       }
@@ -52,8 +133,7 @@ export const EmployeeManagement: React.FC = () => {
     setIsNew(true);
     setSelectedEmp(null);
     
-    // Generate next EMP ID
-    const nextNum = employees.length + 129; // offsets from seed limit
+    const nextNum = employees.length + 129;
     setFormId(`EMP-${nextNum}`);
     setFormName('');
     setFormDept('Engineering');
@@ -62,7 +142,6 @@ export const EmployeeManagement: React.FC = () => {
     setFormFingerprint(false);
   };
 
-  // Simulate registering fingerprint
   const handleRegisterFingerprint = () => {
     setRegisteringBiometric(true);
     toast.loading('Place finger on scanner terminal...', { id: 'fp-scan' });
@@ -74,7 +153,6 @@ export const EmployeeManagement: React.FC = () => {
     }, 2000);
   };
 
-  // Photo Selector simulation
   const handleSimulatePhotoUpload = () => {
     const photos = [
       'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&h=150&q=80',
@@ -108,7 +186,6 @@ export const EmployeeManagement: React.FC = () => {
 
       await db.employees.put(empData);
       
-      // Audit Log
       await db.auditLogs.add({
         timestamp: new Date(),
         user: 'admin',
@@ -122,8 +199,6 @@ export const EmployeeManagement: React.FC = () => {
       
       setIsNew(false);
       await fetchEmployees();
-      
-      // Keep selection
       handleSelectEmployee(empData);
     } catch (err) {
       console.error(err);
@@ -131,7 +206,150 @@ export const EmployeeManagement: React.FC = () => {
     }
   };
 
-  // Filter Employees by name or ID
+  const validateImportData = (data: any[]) => {
+    const errors: string[] = [];
+    const requiredFields = ['Name', 'Department', 'Status'];
+    
+    data.forEach((row, index) => {
+      const rowNum = index + 2; // +2 for header and 0-index
+        
+      // Check required fields
+      requiredFields.forEach(field => {
+        if (!row[field]) {
+          errors.push(`Row ${rowNum}: Missing "${field}"`);
+        }
+      });
+
+      // Validate status
+      if (row.Status && !['Active', 'Inactive'].includes(row.Status)) {
+        errors.push(`Row ${rowNum}: Status must be "Active" or "Inactive"`);
+      }
+
+      // Validate department (optional - can add more validation)
+      if (row.Department && typeof row.Department !== 'string') {
+        errors.push(`Row ${rowNum}: Department must be text`);
+      }
+    });
+
+    setImportErrors(errors);
+    if (errors.length === 0) {
+      toast.success(`Successfully loaded ${data.length} employees for import`);
+    } else {
+      toast.error(`Found ${errors.length} errors in the data`);
+    }
+  };
+
+  const handleImportEmployees = async () => {
+    if (importData.length === 0) {
+      toast.error('No data to import');
+      return;
+    }
+
+    if (importErrors.length > 0) {
+      toast.error('Please fix the errors before importing');
+      return;
+    }
+
+    setIsImporting(true);
+    let imported = 0;
+    let failed = 0;
+
+    try {
+      const currentEmployees = await db.employees.toArray();
+      const existingIds = new Set(currentEmployees.map(emp => emp.id));
+
+      for (const row of importData) {
+        try {
+          // Generate unique ID
+          let id = row['Employee ID'] || row['ID'] || `EMP-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+          
+          // Check if ID already exists
+          if (existingIds.has(id)) {
+            // Generate alternative ID
+            id = `EMP-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+          }
+
+          const employee: Employee = {
+            id: id,
+            name: row['Name'] || row['Full Name'] || 'Unknown',
+            department: row['Department'] || 'Unassigned',
+            status: row['Status'] === 'Inactive' ? 'Inactive' : 'Active',
+            photo: row['Photo'] || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80',
+            fingerprintRegistered: row['Fingerprint'] === 'Yes' || row['Fingerprint'] === true,
+            fingerprintTemplate: row['Fingerprint'] === 'Yes' || row['Fingerprint'] === true 
+              ? `fingerprint_template_${id.toLowerCase()}` 
+              : undefined
+          };
+
+          await db.employees.put(employee);
+          existingIds.add(id);
+          imported++;
+        } catch (error) {
+          console.error('Error importing row:', error);
+          failed++;
+        }
+      }
+
+      // Audit log
+      await db.auditLogs.add({
+        timestamp: new Date(),
+        user: 'admin',
+        action: 'Import Employees',
+        entity: 'Employee',
+        entityId: 'bulk-import',
+        details: JSON.stringify({ 
+          total: importData.length, 
+          imported, 
+          failed,
+          timestamp: new Date().toISOString()
+        })
+      });
+
+      toast.success(`Successfully imported ${imported} employees${failed > 0 ? `, ${failed} failed` : ''}`);
+      
+      // Refresh employee list
+      await fetchEmployees();
+      setShowImportModal(false);
+      setImportData([]);
+      setImportErrors([]);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (error) {
+      console.error('Import failed:', error);
+      toast.error('Failed to import employees');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const downloadTemplate = () => {
+    const template = [
+      {
+        'Employee ID': 'EMP-00123',
+        'Name': 'John Doe',
+        'Department': 'Engineering',
+        'Status': 'Active',
+        'Fingerprint': 'Yes',
+        'Photo': 'https://example.com/photo.jpg'
+      },
+      {
+        'Employee ID': 'EMP-00124',
+        'Name': 'Jane Smith',
+        'Department': 'Human Resources',
+        'Status': 'Active',
+        'Fingerprint': 'No',
+        'Photo': 'https://example.com/photo2.jpg'
+      }
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(template);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Employees');
+    XLSX.writeFile(wb, 'employee_import_template.xlsx');
+    toast.success('Template downloaded!');
+  };
+
   const filteredEmployees = employees.filter(emp => 
     emp.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     emp.id.toLowerCase().includes(searchTerm.toLowerCase())
@@ -149,12 +367,19 @@ export const EmployeeManagement: React.FC = () => {
             Configure employee directory rosters, bios, statuses, and biometric fingerprint maps
           </p>
         </div>
+        <button
+          onClick={() => setShowImportModal(true)}
+          className="h-[44px] bg-brand-light-green/30 text-brand-dark-green px-5 rounded-[8px] text-sm font-medium hover:bg-brand-light-green/50 transition flex items-center gap-2 shadow-sm border border-brand-light-green"
+        >
+          <UploadSimple size={18} />
+          <span>Import Excel</span>
+        </button>
       </div>
 
-      {/* Main Grid: Master (35%) / Detail (65%) */}
+      {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 items-start">
         
-        {/* MASTER PANEL (35% / 3-Columns equivalent) */}
+        {/* MASTER PANEL */}
         <div className="lg:col-span-4 bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden flex flex-col h-[600px]">
           
           {/* Search and Add Header */}
@@ -212,7 +437,6 @@ export const EmployeeManagement: React.FC = () => {
                       </div>
                     </div>
                     
-                    {/* Status badge + id */}
                     <div className="text-right flex flex-col items-end gap-1">
                       <span className="text-[10px] font-mono text-brand-gray-neutral bg-gray-50 px-1 py-0.5 rounded border border-gray-100">
                         {emp.id}
@@ -229,11 +453,10 @@ export const EmployeeManagement: React.FC = () => {
           </div>
         </div>
 
-        {/* DETAIL PANEL (65% / 6-Columns equivalent) */}
+        {/* DETAIL PANEL */}
         <div className="lg:col-span-6 bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-8 h-[600px] flex flex-col justify-between">
           <form onSubmit={handleSave} className="space-y-6 overflow-y-auto pr-1 flex-1">
             
-            {/* Header Title */}
             <div className="border-b border-gray-100 pb-3 flex items-center justify-between select-none">
               <h3 className="text-brand-dark-green font-semibold text-base">
                 {isNew ? 'Register New Employee' : 'Employee Details'}
@@ -245,7 +468,6 @@ export const EmployeeManagement: React.FC = () => {
               )}
             </div>
 
-            {/* Profile Picture Upload row */}
             <div className="flex items-center gap-6">
               <img 
                 src={formPhoto} 
@@ -266,10 +488,7 @@ export const EmployeeManagement: React.FC = () => {
               </div>
             </div>
 
-            {/* Form Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              
-              {/* Employee ID (Read-only) */}
               <div className="space-y-1.5 select-none">
                 <label className="block text-[13px] font-medium text-brand-dark-green">
                   Employee Number
@@ -282,7 +501,6 @@ export const EmployeeManagement: React.FC = () => {
                 />
               </div>
 
-              {/* Full Name */}
               <div className="space-y-1.5">
                 <label className="block text-[13px] font-medium text-brand-dark-green">
                   Full Name
@@ -297,7 +515,6 @@ export const EmployeeManagement: React.FC = () => {
                 />
               </div>
 
-              {/* Department */}
               <div className="space-y-1.5">
                 <label className="block text-[13px] font-medium text-brand-dark-green">
                   Department
@@ -316,7 +533,6 @@ export const EmployeeManagement: React.FC = () => {
                 </select>
               </div>
 
-              {/* Status active/inactive toggles */}
               <div className="space-y-1.5 select-none">
                 <label className="block text-[13px] font-medium text-brand-dark-green">
                   Status State
@@ -346,10 +562,8 @@ export const EmployeeManagement: React.FC = () => {
                   </button>
                 </div>
               </div>
-
             </div>
 
-            {/* Fingerprint Registration Panel */}
             <div className="bg-[#F9FAFB]/50 border border-gray-200 rounded-[8px] p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 select-none">
@@ -377,7 +591,6 @@ export const EmployeeManagement: React.FC = () => {
 
           </form>
 
-          {/* Footer Save actions */}
           <div className="border-t border-gray-100 pt-4 flex justify-end gap-3 select-none">
             {isNew ? (
               <button
@@ -400,10 +613,182 @@ export const EmployeeManagement: React.FC = () => {
               Save Changes
             </button>
           </div>
-
         </div>
-
       </div>
+
+      {/* IMPORT MODAL */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-brand-white rounded-[12px] p-6 max-w-[600px] w-full border border-[rgba(50,100,50,0.15)] shadow-xl space-y-5">
+            
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3 select-none">
+              <h3 className="text-brand-dark-green font-semibold text-[18px] flex items-center gap-2">
+                <FileCsv size={22} className="text-brand-gold" />
+                Import Employees
+              </h3>
+              <button 
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportData([]);
+                  setImportErrors([]);
+                  setIsDragging(false);
+                }}
+                className="text-brand-gray-neutral hover:text-brand-dark-green font-medium text-lg focus:outline-none"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Upload Area with Drag and Drop */}
+              <div
+                className={`border-2 border-dashed rounded-[8px] p-8 text-center transition-all duration-200 ${
+                  isDragging 
+                    ? 'border-brand-gold bg-brand-gold/5' 
+                    : 'border-gray-300 hover:border-brand-gold'
+                }`}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+              >
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleFileInputChange}
+                  className="hidden"
+                  id="file-upload"
+                />
+                <label htmlFor="file-upload" className="cursor-pointer block">
+                  {isDragging ? (
+                    <>
+                      <UploadSimple size={40} className="text-brand-gold mx-auto mb-3" />
+                      <p className="text-brand-gold font-medium mb-1">Drop your file here</p>
+                      <p className="text-brand-gray-neutral text-xs">Release to upload</p>
+                    </>
+                  ) : (
+                    <>
+                      <UploadSimple size={40} className="text-brand-gray-neutral mx-auto mb-3" />
+                      <p className="text-brand-dark-green font-medium mb-1">Upload Excel or CSV File</p>
+                      <p className="text-brand-gray-neutral text-xs">
+                        Drag and drop or click to browse
+                      </p>
+                      <p className="text-brand-gray-neutral text-[10px] mt-2">
+                        Supported formats: .xlsx, .xls, .csv
+                      </p>
+                    </>
+                  )}
+                </label>
+                
+                {/* Show filename if uploaded */}
+                {importData.length > 0 && (
+                  <div className="mt-3 text-xs text-brand-dark-green bg-brand-light-green/20 px-3 py-1.5 rounded-full inline-flex items-center gap-2">
+                    <FileCsv size={14} className="text-brand-gold" />
+                    <span>{importData.length} rows loaded</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Template Download */}
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={downloadTemplate}
+                  className="text-brand-gold text-sm font-semibold hover:underline flex items-center gap-1"
+                >
+                  <FileCsv size={16} />
+                  Download Template
+                </button>
+                <span className="text-[10px] text-brand-gray-neutral">
+                  Required: Name, Department, Status
+                </span>
+              </div>
+
+              {/* Import Preview */}
+              {importData.length > 0 && (
+                <div className="border border-gray-200 rounded-[8px] p-4 max-h-[200px] overflow-auto">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-brand-dark-green">
+                      Preview ({importData.length} rows)
+                    </span>
+                    {importErrors.length > 0 && (
+                      <span className="text-xs text-brand-error-red">
+                        {importErrors.length} error(s) found
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-brand-gray-neutral space-y-1">
+                    {importData.slice(0, 5).map((row, index) => (
+                      <div key={index} className="flex items-center gap-2 border-b border-gray-50 py-1">
+                        <span className="text-brand-gray-neutral w-6">{index + 1}.</span>
+                        <span className="font-medium text-brand-dark-green">
+                          {row['Name'] || row['Full Name'] || 'Unknown'}
+                        </span>
+                        <span className="text-brand-gray-neutral">-</span>
+                        <span>{row['Department'] || 'Unassigned'}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                          row['Status'] === 'Active' 
+                            ? 'bg-green-100 text-green-700' 
+                            : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {row['Status'] || 'Active'}
+                        </span>
+                        {row['Fingerprint'] === 'Yes' && (
+                          <span className="text-[9px] text-brand-dark-green">
+                            <Fingerprint size={10} className="inline" />
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                    {importData.length > 5 && (
+                      <div className="text-brand-gray-neutral text-[10px] pt-1">
+                        ... and {importData.length - 5} more rows
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Error List */}
+              {importErrors.length > 0 && (
+                <div className="bg-brand-error-red/5 border border-brand-error-red/30 rounded-[8px] p-3 max-h-[100px] overflow-auto">
+                  <span className="text-xs font-medium text-brand-error-red block mb-1">Errors:</span>
+                  {importErrors.map((error, index) => (
+                    <div key={index} className="text-[10px] text-brand-error-red/90">
+                      • {error}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setImportData([]);
+                    setImportErrors([]);
+                    setIsDragging(false);
+                    if (fileInputRef.current) {
+                      fileInputRef.current.value = '';
+                    }
+                  }}
+                  className="flex-1 h-[44px] border border-gray-300 text-brand-gray-neutral rounded-[8px] font-medium text-sm hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleImportEmployees}
+                  disabled={importData.length === 0 || importErrors.length > 0 || isImporting}
+                  className="flex-1 h-[44px] bg-brand-gold text-brand-white rounded-[8px] font-medium text-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isImporting ? 'Importing...' : `Import ${importData.length} Employees`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
