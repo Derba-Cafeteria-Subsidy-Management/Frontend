@@ -269,23 +269,38 @@ export const EmployeeManagement: React.FC = () => {
     
     data.forEach((row, index) => {
       const rowNum = index + 2;
-        
+      const rowErrors: string[] = [];
+      
+      // Check each required field
       requiredFields.forEach(field => {
-        if (!row[field]) {
-          errors.push(`Row ${rowNum}: Missing "${field}"`);
+        if (!row[field] || row[field].toString().trim() === '') {
+          rowErrors.push(`Missing "${field}"`);
         }
       });
 
+      // Validate Status
       if (row.Status && !['Active', 'Inactive'].includes(row.Status)) {
-        errors.push(`Row ${rowNum}: Status must be "Active" or "Inactive"`);
+        rowErrors.push(`Status must be "Active" or "Inactive" (got "${row.Status}")`);
       }
 
+      // Validate Department
       if (row.Department && typeof row.Department !== 'string') {
-        errors.push(`Row ${rowNum}: Department must be text`);
+        rowErrors.push('Department must be text');
+      }
+
+      // Validate Name
+      if (row.Name && typeof row.Name !== 'string') {
+        rowErrors.push('Name must be text');
+      }
+
+      // If there are errors for this row, combine them
+      if (rowErrors.length > 0) {
+        errors.push(`Row ${rowNum}: ${rowErrors.join(', ')}`);
       }
     });
 
     setImportErrors(errors);
+    
     if (errors.length === 0) {
       toast.success(`Successfully loaded ${data.length} employees for import`);
     } else {
@@ -307,13 +322,35 @@ export const EmployeeManagement: React.FC = () => {
     setIsImporting(true);
     let imported = 0;
     let failed = 0;
+    const failedRows: string[] = [];
 
     try {
       const currentEmployees = await db.employees.toArray();
       const existingIds = new Set(currentEmployees.map(emp => emp.id));
 
-      for (const row of importData) {
+      for (let i = 0; i < importData.length; i++) {
+        const row = importData[i];
+        const rowNum = i + 2;
+        
         try {
+          // Validate required fields for each row before import
+          const rowErrors: string[] = [];
+          if (!row['Name'] || row['Name'].toString().trim() === '') {
+            rowErrors.push('Name is required');
+          }
+          if (!row['Department'] || row['Department'].toString().trim() === '') {
+            rowErrors.push('Department is required');
+          }
+          if (!row['Status'] || !['Active', 'Inactive'].includes(row['Status'])) {
+            rowErrors.push('Status must be "Active" or "Inactive"');
+          }
+
+          if (rowErrors.length > 0) {
+            failedRows.push(`Row ${rowNum}: ${rowErrors.join(', ')}`);
+            failed++;
+            continue;
+          }
+
           let id = row['Employee ID'] || row['ID'] || `EMP-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
           
           if (existingIds.has(id)) {
@@ -322,8 +359,8 @@ export const EmployeeManagement: React.FC = () => {
 
           const employee: Employee = {
             id: id,
-            name: row['Name'] || row['Full Name'] || 'Unknown',
-            department: row['Department'] || 'Unassigned',
+            name: row['Name'].toString().trim(),
+            department: row['Department'].toString().trim(),
             status: row['Status'] === 'Inactive' ? 'Inactive' : 'Active',
             photo: row['Photo'] || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80',
             fingerprintRegistered: row['Fingerprint'] === 'Yes' || row['Fingerprint'] === true,
@@ -337,25 +374,50 @@ export const EmployeeManagement: React.FC = () => {
           imported++;
         } catch (error) {
           console.error('Error importing row:', error);
+          failedRows.push(`Row ${rowNum}: ${error instanceof Error ? error.message : 'Unknown error'}`);
           failed++;
         }
       }
 
-      await db.auditLogs.add({
-        timestamp: new Date(),
-        user: 'admin',
-        action: 'Import Employees',
-        entity: 'Employee',
-        entityId: 'bulk-import',
-        details: JSON.stringify({ 
-          total: importData.length, 
-          imported, 
-          failed,
-          timestamp: new Date().toISOString()
-        })
-      });
+      // Log any failed rows
+      if (failedRows.length > 0) {
+        console.warn('Failed imports:', failedRows.join('\n'));
+        
+        await db.auditLogs.add({
+          timestamp: new Date(),
+          user: 'admin',
+          action: 'Import Employees - Partial Failure',
+          entity: 'Employee',
+          entityId: 'bulk-import',
+          details: JSON.stringify({ 
+            total: importData.length, 
+            imported, 
+            failed,
+            failedRows: failedRows,
+            timestamp: new Date().toISOString()
+          })
+        });
+      } else {
+        await db.auditLogs.add({
+          timestamp: new Date(),
+          user: 'admin',
+          action: 'Import Employees',
+          entity: 'Employee',
+          entityId: 'bulk-import',
+          details: JSON.stringify({ 
+            total: importData.length, 
+            imported, 
+            failed,
+            timestamp: new Date().toISOString()
+          })
+        });
+      }
 
-      toast.success(`Successfully imported ${imported} employees${failed > 0 ? `, ${failed} failed` : ''}`);
+      if (failed > 0) {
+        toast.error(`Imported ${imported} employees, ${failed} failed. Check console for details.`);
+      } else {
+        toast.success(`Successfully imported ${imported} employees`);
+      }
       
       await fetchEmployees();
       setShowImportModal(false);
@@ -821,10 +883,12 @@ export const EmployeeManagement: React.FC = () => {
               )}
 
               {importErrors.length > 0 && (
-                <div className="bg-brand-error-red/5 border border-brand-error-red/30 rounded-[8px] p-3 max-h-[100px] overflow-auto">
-                  <span className="text-xs font-medium text-brand-error-red block mb-1">Errors:</span>
+                <div className="bg-brand-error-red/5 border border-brand-error-red/30 rounded-[8px] p-3 max-h-[150px] overflow-auto">
+                  <span className="text-xs font-medium text-brand-error-red block mb-1">
+                    Errors ({importErrors.length}):
+                  </span>
                   {importErrors.map((error, index) => (
-                    <div key={index} className="text-[10px] text-brand-error-red/90">
+                    <div key={index} className="text-[10px] text-brand-error-red/90 py-0.5">
                       • {error}
                     </div>
                   ))}

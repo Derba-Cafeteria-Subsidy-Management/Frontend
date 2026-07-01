@@ -14,6 +14,7 @@ export interface Employee {
 export interface MenuItem {
   id?: number;
   name: string;
+  description?: string;
   price: number;
   isActive: boolean;
   effectiveDate: string;
@@ -98,7 +99,7 @@ class CafeteriaDatabase extends Dexie {
     
     this.version(1).stores({
       employees: 'id, name, department, status, fingerprintRegistered',
-      menuItems: '++id, name, price, isActive, effectiveDate',
+      menuItems: '++id, name, description, price, isActive, effectiveDate',
       transactions: 'id, employeeId, employeeName, session, timestamp, status, isSynced',
       correctionRequests: 'id, transactionId, employeeName, session, status, cashierName, timestamp',
       auditLogs: '++id, timestamp, user, action, entity',
