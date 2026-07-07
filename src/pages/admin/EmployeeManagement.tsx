@@ -1,7 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axiosInstance from '../../client/axios';
 import { offlineDb } from '../../db/indexedDb';
-import { MagnifyingGlass, Plus, Fingerprint, UploadSimple, FileCsv, X, CaretLeft, CaretRight } from '@phosphor-icons/react';
+import {
+  MagnifyingGlass,
+  Plus,
+  Fingerprint,
+  UploadSimple,
+  FileCsv,
+  X,
+  CaretLeft,
+  CaretRight,
+  Check,
+  Warning,
+  Trash,
+} from '@phosphor-icons/react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import type { Employee } from '../../types/api';
@@ -17,13 +29,12 @@ export const EmployeeManagement: React.FC = () => {
   const [totalEmployees, setTotalEmployees] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
-  // ✅ FIXED: Use ReturnType<typeof setTimeout> instead of NodeJS.Timeout
   const [searchTimeout, setSearchTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
   const limit = 20;
 
   // Form states
   const [isNew, setIsNew] = useState(false);
-  const [formId, setFormId] = useState(''); // employeeNumber or database ID
+  const [formId, setFormId] = useState('');
   const [formName, setFormName] = useState('');
   const [formStatus, setFormStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
   const [formPhoto, setFormPhoto] = useState('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80');
@@ -55,9 +66,7 @@ export const EmployeeManagement: React.FC = () => {
         limit: limit
       };
 
-      // Add search parameters if search term exists
       if (search.trim()) {
-        // Check if search term looks like an employee number (contains numbers or EMP-)
         const isEmployeeNumber = /^EMP-\d+$/.test(search.trim()) || /^\d+$/.test(search.trim());
         if (isEmployeeNumber) {
           params.employeeNumber = search.trim();
@@ -74,16 +83,13 @@ export const EmployeeManagement: React.FC = () => {
         setTotalEmployees(res.data.data.pagination?.total || list.length);
         setTotalPages(res.data.data.pagination?.totalPages || Math.ceil((res.data.data.pagination?.total || list.length) / limit));
 
-        // If no employee is selected and we have employees, select the first one
         if (list.length > 0 && !selectedEmp && !isNew) {
           handleSelectEmployee(list[0]);
         } else if (list.length === 0 && selectedEmp) {
-          // Clear selected employee if none found
           setSelectedEmp(null);
           setIsNew(true);
         }
 
-        // Cache to IndexedDB for offline-ready cashier flow
         try {
           await offlineDb.offlineEmployees.clear();
           if (list.length > 0) {
@@ -170,7 +176,6 @@ export const EmployeeManagement: React.FC = () => {
     setPhotoPreview(null);
     setFormPhotoFile(null);
 
-    // Generate standard serial EMP id based on total count
     const nextNum = totalEmployees + 129;
     setFormId(`EMP-${nextNum}`);
     setFormName('');
@@ -293,8 +298,10 @@ export const EmployeeManagement: React.FC = () => {
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(firstSheet);
 
-        if (jsonData.length > 0) {
-          console.log('Excel columns found:', Object.keys(jsonData[0]));
+        // ✅ FIXED: TypeScript error - properly type the jsonData
+        if (jsonData && jsonData.length > 0) {
+          const firstRow = jsonData[0] as Record<string, unknown>;
+          console.log('Excel columns found:', Object.keys(firstRow));
         }
 
         const mappedData = jsonData.map((row: any) => {
@@ -741,7 +748,7 @@ export const EmployeeManagement: React.FC = () => {
                       onClick={handleRemovePhoto}
                       className="text-brand-error-red text-xs font-semibold hover:underline flex items-center gap-1"
                     >
-                      <X size={14} />
+                      <Trash size={14} />
                       Remove
                     </button>
                   )}
@@ -882,9 +889,9 @@ export const EmployeeManagement: React.FC = () => {
                     fileInputRef.current.value = '';
                   }
                 }}
-                className="text-brand-gray-neutral hover:text-brand-dark-green font-medium text-lg focus:outline-none"
+                className="p-1 text-brand-gray-neutral hover:text-brand-dark-green rounded-full hover:bg-gray-100 transition-colors focus:outline-none"
               >
-                ✕
+                <X size={20} />
               </button>
             </div>
 
@@ -933,12 +940,14 @@ export const EmployeeManagement: React.FC = () => {
                     </span>
                     {importStats.validCount > 0 && (
                       <span className="text-green-700 bg-green-100 px-3 py-1.5 rounded-full">
-                        ✅ {importStats.validCount} valid
+                        <Check size={14} className="inline mr-1" />
+                        {importStats.validCount} valid
                       </span>
                     )}
                     {importStats.errorCount > 0 && (
                       <span className="text-red-700 bg-red-100 px-3 py-1.5 rounded-full">
-                        ❌ {importStats.errorCount} errors
+                        <X size={14} className="inline mr-1" />
+                        {importStats.errorCount} errors
                       </span>
                     )}
                   </div>
@@ -981,8 +990,9 @@ export const EmployeeManagement: React.FC = () => {
                           {row.fullName || 'Unknown'}
                         </span>
                         {row.fingerprintId && (
-                          <span className="text-[10px] text-brand-dark-green bg-brand-light-green/20 px-1.5 rounded">
-                            🔒 FP
+                          <span className="text-[10px] text-brand-dark-green bg-brand-light-green/20 px-1.5 rounded inline-flex items-center gap-1">
+                            <Fingerprint size={10} />
+                            FP
                           </span>
                         )}
                       </div>
@@ -1002,8 +1012,9 @@ export const EmployeeManagement: React.FC = () => {
                     Errors ({importErrors.length}):
                   </span>
                   {importErrors.map((error, index) => (
-                    <div key={index} className="text-[10px] text-brand-error-red/90 py-0.5">
-                      • {error}
+                    <div key={index} className="text-[10px] text-brand-error-red/90 py-0.5 flex items-start gap-1">
+                      <Warning size={12} className="shrink-0 mt-0.5" />
+                      <span>{error}</span>
                     </div>
                   ))}
                 </div>
@@ -1046,8 +1057,9 @@ export const EmployeeManagement: React.FC = () => {
               </div>
 
               {!previewToken && importData.length > 0 && (
-                <div className="text-xs text-brand-error-red text-center">
-                  ⚠️ Please upload the file again to generate a preview token
+                <div className="text-xs text-brand-error-red text-center flex items-center justify-center gap-1">
+                  <Warning size={14} />
+                  Please upload the file again to generate a preview token
                 </div>
               )}
             </div>

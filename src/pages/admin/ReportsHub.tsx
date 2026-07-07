@@ -8,9 +8,9 @@ import {
   Info,
   ChartBar,
   Users,
-  Coffee,
-  Sun,
-  Moon,
+  // Coffee,
+  // Sun,
+  // Moon,
   CurrencyDollar,
   WarningCircle,
   Download,
@@ -80,11 +80,11 @@ export const ReportsHub: React.FC = () => {
   };
 
   /**
-   * Format currency
+   * Format currency - kept for potential future use
    */
-  const formatCurrency = (amount: number): string => {
-    return amount.toFixed(2) + ' ETB';
-  };
+  // const _formatCurrency = (amount: number): string => {
+  //   return amount.toFixed(2) + ' ETB';
+  // };
 
   /**
    * Get period date range
@@ -205,8 +205,13 @@ export const ReportsHub: React.FC = () => {
         const filtered = [];
         for (const t of list) {
           const emp = await db.employees.get(t.employeeId);
-          if (emp && emp.status === employeeStatus) {
-            filtered.push(t);
+          // ✅ FIXED: Compare status correctly
+          if (emp) {
+            // Convert emp.status (which is 'ACTIVE' | 'INACTIVE') to match employeeStatus
+            const empStatus = emp.status === 'ACTIVE' ? 'Active' : 'Inactive';
+            if (empStatus === employeeStatus) {
+              filtered.push(t);
+            }
           }
         }
         setTransactions(filtered);
@@ -316,20 +321,20 @@ export const ReportsHub: React.FC = () => {
   };
 
   /**
-   * Render session icon
+   * Render session icon - kept for potential future use
    */
-  const getSessionIcon = (session: string) => {
-    switch (session) {
-      case 'BREAKFAST':
-        return <Coffee size={16} className="text-brand-gold" />;
-      case 'LUNCH':
-        return <Sun size={16} className="text-brand-gold" />;
-      case 'DINNER':
-        return <Moon size={16} className="text-brand-gold" />;
-      default:
-        return <Coffee size={16} className="text-brand-gray-neutral" />;
-    }
-  };
+  // const _getSessionIcon = (session: string) => {
+  //   switch (session) {
+  //     case 'BREAKFAST':
+  //       return <Coffee size={16} className="text-brand-gold" />;
+  //     case 'LUNCH':
+  //       return <Sun size={16} className="text-brand-gold" />;
+  //     case 'DINNER':
+  //       return <Moon size={16} className="text-brand-gold" />;
+  //     default:
+  //       return <Coffee size={16} className="text-brand-gray-neutral" />;
+  //   }
+  // };
 
   // ================= REPORT EXPORTS =================
 

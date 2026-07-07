@@ -63,7 +63,7 @@ const ProtectedRoute: React.FC<{
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  if (!allowedRoles.includes(currentUser.role)) {
+  if (!allowedRoles.includes(currentUser.role as any)) {
     if (currentUser.role === 'CASHIER') return <Navigate to="/cashier" replace />;
     if (currentUser.role === 'ADMIN') return <Navigate to="/admin" replace />;
     if (currentUser.role === 'SUPER_ADMIN') return <Navigate to="/super-admin" replace />;

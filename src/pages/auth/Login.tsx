@@ -4,39 +4,18 @@ import { useApp } from '../../context/AppContext';
 import { Eye, EyeSlash, ShieldWarning } from '@phosphor-icons/react';
 import toast from 'react-hot-toast';
 import logo from '../../assets/logo.png';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-
-const loginSchema = z.object({
-  email: z.string().email('Please enter a valid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters long'),
-  rememberMe: z.boolean().default(true),
-});
-
-type LoginInput = z.infer<typeof loginSchema>;
 
 export const Login: React.FC = () => {
   const { login } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
 
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<LoginInput>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: '',
-      password: '',
-      rememberMe: true,
-    },
-  });
 
   useEffect(() => {
     const message = (location.state as { message?: string } | null)?.message;
@@ -46,11 +25,12 @@ export const Login: React.FC = () => {
     }
   }, [location.pathname, location.state, navigate]);
 
-  const onSubmit = async (data: LoginInput) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setIsLoading(true);
     setErrorMsg(null);
 
-    const result = await login(data.email.trim(), data.password, data.rememberMe);
+    const result = await login(email.trim(), password, rememberMe);
     setIsLoading(false);
 
     if (result.success) {
@@ -85,7 +65,7 @@ export const Login: React.FC = () => {
         </div>
       )}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1.5">
           <label className="block text-[13px] font-medium text-brand-dark-green">Email</label>
           <input
@@ -93,14 +73,10 @@ export const Login: React.FC = () => {
             disabled={isLoading}
             placeholder="Enter email address"
             autoComplete="email"
-            {...register('email')}
-            className={`w-full h-[44px] px-3 border rounded-[8px] focus:outline-none focus:border-2 focus:border-brand-dark-green disabled:bg-gray-50 placeholder-brand-gray-neutral/60 text-sm text-brand-dark-green ${
-              errors.email ? 'border-brand-error-red' : 'border-gray-300'
-            }`}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full h-[44px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-2 focus:border-brand-dark-green disabled:bg-gray-50 placeholder-brand-gray-neutral/60 text-sm text-brand-dark-green"
           />
-          {errors.email && (
-            <p className="text-brand-error-red text-[11px] font-medium">{errors.email.message}</p>
-          )}
         </div>
 
         <div className="space-y-1.5">
@@ -120,10 +96,9 @@ export const Login: React.FC = () => {
               disabled={isLoading}
               placeholder="Enter password"
               autoComplete="current-password"
-              {...register('password')}
-              className={`w-full h-[44px] pl-3 pr-10 border rounded-[8px] focus:outline-none focus:border-2 focus:border-brand-dark-green disabled:bg-gray-50 placeholder-brand-gray-neutral/60 text-sm text-brand-dark-green ${
-                errors.password ? 'border-brand-error-red' : 'border-gray-300'
-              }`}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full h-[44px] pl-3 pr-10 border border-gray-300 rounded-[8px] focus:outline-none focus:border-2 focus:border-brand-dark-green disabled:bg-gray-50 placeholder-brand-gray-neutral/60 text-sm text-brand-dark-green"
             />
             <button
               type="button"
@@ -133,16 +108,14 @@ export const Login: React.FC = () => {
               {showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
             </button>
           </div>
-          {errors.password && (
-            <p className="text-brand-error-red text-[11px] font-medium">{errors.password.message}</p>
-          )}
         </div>
 
         <div className="flex items-center gap-2">
           <input
             id="remember-me"
             type="checkbox"
-            {...register('rememberMe')}
+            checked={rememberMe}
+            onChange={(e) => setRememberMe(e.target.checked)}
             className="w-4 h-4 accent-brand-dark-green border-gray-300 rounded focus:ring-0 focus:ring-offset-0 focus:outline-none"
           />
           <label htmlFor="remember-me" className="text-xs text-brand-gray-neutral select-none cursor-pointer">

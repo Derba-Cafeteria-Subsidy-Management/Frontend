@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import type { CorrectionRequest, Transaction, MenuItem } from '../../types/api';
 
 export const CorrectionRequests: React.FC = () => {
-  const { currentUser, isOffline } = useApp();
+  const { isOffline } = useApp();
   const [requests, setRequests] = useState<CorrectionRequest[]>([]);
   const [loading, setLoading] = useState(true);
 

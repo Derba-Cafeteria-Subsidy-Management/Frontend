@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { UserPlus, MagnifyingGlass, CaretLeft, CaretRight } from '@phosphor-icons/react';
 import toast from 'react-hot-toast';

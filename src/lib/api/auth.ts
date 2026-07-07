@@ -1,5 +1,4 @@
 import type {
-  ApiUser,
   MessageResponse,
   RefreshTokenResponse,
 } from '../auth/types';
