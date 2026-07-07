@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { db, type CorrectionRequest, type Transaction, type MenuItem } from '../../db/db';
+import axiosInstance from '../../client/axios';
 import { useApp } from '../../context/AppContext';
 import { Plus, PaperPlane, ClipboardText } from '@phosphor-icons/react';
 import toast from 'react-hot-toast';
+import type { CorrectionRequest, Transaction, MenuItem } from '../../types/api';
 
 export const CorrectionRequests: React.FC = () => {
-  const { currentUser } = useApp();
+  const { currentUser, isOffline } = useApp();
   const [requests, setRequests] = useState<CorrectionRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -14,9 +15,9 @@ export const CorrectionRequests: React.FC = () => {
   const [todaysTransactions, setTodaysTransactions] = useState<Transaction[]>([]);
   const [selectedTxnId, setSelectedTxnId] = useState<string>('');
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
-  
+
   const [availableMenuItems, setAvailableMenuItems] = useState<MenuItem[]>([]);
-  const [requestedItemId, setRequestedItemId] = useState<number | ''>('');
+  const [requestedItemId, setRequestedItemId] = useState<string>('');
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -24,14 +25,18 @@ export const CorrectionRequests: React.FC = () => {
   const fetchRequests = async () => {
     setLoading(true);
     try {
-      const list = await db.correctionRequests
-        .orderBy('timestamp')
-        .reverse()
-        .toArray();
-      // Filter by current cashier
-      const cashierUser = currentUser?.username || 'cashier';
-      const myRequests = list.filter(req => req.cashierName === cashierUser);
-      setRequests(myRequests);
+      if (isOffline) {
+        toast.error('Currently offline. Cannot fetch corrections history.');
+        setRequests([]);
+        setLoading(false);
+        return;
+      }
+
+      const res = await axiosInstance.get('/api/corrections');
+      if (res.data?.success && res.data?.data) {
+        const list = Array.isArray(res.data.data) ? res.data.data : res.data.data.corrections || [];
+        setRequests(list);
+      }
     } catch (e) {
       console.error(e);
       toast.error('Failed to load correction requests');
@@ -42,46 +47,59 @@ export const CorrectionRequests: React.FC = () => {
 
   useEffect(() => {
     fetchRequests();
-  }, [currentUser]);
+  }, [isOffline]);
 
   // Load today's transactions for the creation wizard
   const handleOpenWizard = async () => {
+    if (isOffline) {
+      toast.error('Cannot create corrections while offline');
+      return;
+    }
     setShowWizard(true);
     setSelectedTxnId('');
     setSelectedTxn(null);
     setReason('');
     setRequestedItemId('');
 
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
-
-    // Fetch active (complete) transactions from today
-    const txns = await db.transactions
-      .where('timestamp')
-      .between(startOfDay, endOfDay, true, true)
-      .and(t => t.status === 'Complete')
-      .toArray();
-
-    setTodaysTransactions(txns);
+    try {
+      const res = await axiosInstance.get('/api/transactions');
+      if (res.data?.success && res.data?.data) {
+        const list = Array.isArray(res.data.data) ? res.data.data : res.data.data.transactions || [];
+        const todayStr = new Date().toDateString();
+        // filter for completed transactions from today that do not have pending corrections
+        const eligible = list.filter(
+          (t: any) =>
+            new Date(t.transactionDate || t.createdAt).toDateString() === todayStr &&
+            t.correctionStatus !== 'PENDING_CORRECTION'
+        );
+        setTodaysTransactions(eligible);
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to load today\'s transactions');
+    }
   };
 
   // When a transaction is selected in wizard
   useEffect(() => {
     const loadTxnDetails = async () => {
       if (selectedTxnId) {
-        const txn = todaysTransactions.find(t => t.id === selectedTxnId);
+        const txn = todaysTransactions.find((t) => t.id === selectedTxnId);
         if (txn) {
           setSelectedTxn(txn);
-          
-          // Fetch menus for session
-          const menus = await db.menuItems
-            .where('session')
-            .equals(txn.session)
-            .and(m => m.isActive && m.name !== txn.menuItemName)
-            .toArray();
-          setAvailableMenuItems(menus);
+          try {
+            const res = await axiosInstance.get('/api/menus/active');
+            if (res.data?.success && res.data?.data?.data) {
+              const activeItems = res.data.data.data;
+              const sessionMenus = activeItems.filter(
+                (m: MenuItem) => m.mealtype === txn.mealSession && m.name !== txn.menuItem
+              );
+              setAvailableMenuItems(sessionMenus);
+            }
+          } catch (e) {
+            console.error(e);
+            toast.error('Failed to load alternative menu items');
+          }
           setRequestedItemId('');
         }
       } else {
@@ -98,6 +116,10 @@ export const CorrectionRequests: React.FC = () => {
       toast.error('Please complete all fields');
       return;
     }
+    if (reason.trim().length < 10) {
+      toast.error('Reason must be at least 10 characters long');
+      return;
+    }
     if (reason.length > 250) {
       toast.error('Reason must not exceed 250 characters');
       return;
@@ -105,49 +127,19 @@ export const CorrectionRequests: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const selectedItem = availableMenuItems.find(m => m.id === Number(requestedItemId));
-      if (!selectedItem) {
-        toast.error('Selected menu item is invalid');
-        setIsSubmitting(false);
-        return;
-      }
-
-      const reqId = `REQ-${Math.floor(10000 + Math.random() * 90000)}`;
-
-      const newRequest: CorrectionRequest = {
-        id: reqId,
-        transactionId: selectedTxn.id!,
-        employeeName: selectedTxn.employeeName,
-        session: selectedTxn.session,
-        originalItemName: selectedTxn.menuItemName,
-        originalPrice: selectedTxn.price,
-        requestedItemId: selectedItem.id!,
-        requestedItemName: selectedItem.name,
-        requestedPrice: selectedItem.price,
+      const res = await axiosInstance.post('/api/corrections', {
+        transactionId: selectedTxn.id,
+        newMenuItemId: requestedItemId,
         reason: reason.trim(),
-        status: 'Pending',
-        cashierName: currentUser?.username || 'cashier',
-        timestamp: new Date()
-      };
-
-      await db.correctionRequests.add(newRequest);
-
-      // Audit Log
-      await db.auditLogs.add({
-        timestamp: new Date(),
-        user: currentUser?.username || 'cashier',
-        action: 'Create Correction Request',
-        entity: 'CorrectionRequest',
-        entityId: reqId,
-        details: JSON.stringify({ transactionId: selectedTxn.id })
       });
 
-      toast.success('Correction request submitted for admin review');
-      setShowWizard(false);
-      fetchRequests();
+      if (res.data?.success) {
+        toast.success('Correction request submitted for admin review');
+        setShowWizard(false);
+        fetchRequests();
+      }
     } catch (err) {
       console.error(err);
-      toast.error('Error submitting correction request');
     } finally {
       setIsSubmitting(false);
     }
@@ -204,37 +196,46 @@ export const CorrectionRequests: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {requests.map((req) => {
-                  const dateStr = req.timestamp.toLocaleDateString('en-US', {
+                  const dateStr = new Date(req.createdAt).toLocaleDateString('en-US', {
                     day: 'numeric',
                     month: 'short',
                     hour: '2-digit',
-                    minute: '2-digit'
+                    minute: '2-digit',
                   });
+
+                  // Safely extract old and new item values
+                  const oldItemName = req.old_values?.menuItemName || 'Original Item';
+                  const oldPrice = req.old_values?.menuPrice || 0;
+                  const newItemName = req.new_values?.menuItemName || 'Requested Item';
+                  const newPrice = req.new_values?.menuPrice || 0;
+
                   return (
-                    <tr 
-                      key={req.id}
-                      className="hover:bg-brand-light-green/5 transition-colors"
-                    >
+                    <tr key={req.id} className="hover:bg-brand-light-green/5 transition-colors">
                       <td className="p-4 text-brand-gray-neutral text-xs whitespace-nowrap">{dateStr}</td>
-                      <td className="p-4 font-mono text-[13px] text-brand-dark-green whitespace-nowrap">{req.transactionId}</td>
-                      <td className="p-4 font-medium text-brand-dark-green whitespace-nowrap">{req.employeeName}</td>
+                      <td className="p-4 font-mono text-[13px] text-brand-dark-green whitespace-nowrap">
+                        {req.transactionId}
+                      </td>
+                      <td className="p-4 font-medium text-brand-dark-green whitespace-nowrap">
+                        {req.old_values?.fullName || 'Employee'}
+                      </td>
                       <td className="p-4 text-brand-error-red line-through whitespace-nowrap">
-                        {req.originalItemName} ({req.originalPrice.toFixed(2)})
+                        {oldItemName} ({oldPrice.toFixed(2)})
                       </td>
                       <td className="p-4 text-brand-dark-green font-semibold whitespace-nowrap">
-                        {req.requestedItemName} ({req.requestedPrice.toFixed(2)})
+                        {newItemName} ({newPrice.toFixed(2)})
                       </td>
                       <td className="p-4 text-brand-gray-neutral text-xs max-w-[200px] truncate" title={req.reason}>
                         {req.reason}
                       </td>
                       <td className="p-4 text-center whitespace-nowrap select-none">
-                        <span className={`text-[11px] font-semibold px-3 py-1 rounded-full ${
-                          req.status === 'Approved' 
-                            ? 'bg-brand-dark-green text-brand-white'
-                            : req.status === 'Pending'
-                            ? 'bg-brand-light-green text-brand-dark-green'
-                            : 'bg-red-100 text-brand-error-red'
-                        }`}>
+                        <span
+                          className={`text-[11px] font-semibold px-3 py-1 rounded-full ${req.status === 'APPROVED'
+                              ? 'bg-brand-dark-green text-brand-white'
+                              : req.status === 'PENDING'
+                                ? 'bg-brand-light-green text-brand-dark-green'
+                                : 'bg-red-100 text-brand-error-red'
+                            }`}
+                        >
                           {req.status}
                         </span>
                       </td>
@@ -253,10 +254,8 @@ export const CorrectionRequests: React.FC = () => {
           <div className="bg-brand-white rounded-[12px] p-6 max-w-[480px] w-full border border-[rgba(50,100,50,0.15)] shadow-xl space-y-5 animate-scanner-pulse/0">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-gray-100 pb-3 select-none">
-              <h3 className="text-brand-dark-green font-semibold text-[18px]">
-                Create Correction Request
-              </h3>
-              <button 
+              <h3 className="text-brand-dark-green font-semibold text-[18px]">Create Correction Request</h3>
+              <button
                 onClick={() => setShowWizard(false)}
                 className="text-brand-gray-neutral hover:text-brand-dark-green font-medium text-lg focus:outline-none"
               >
@@ -277,11 +276,14 @@ export const CorrectionRequests: React.FC = () => {
                   className="w-full h-[44px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer"
                 >
                   <option value="">-- Select Transaction --</option>
-                  {todaysTransactions.map(t => {
-                    const time = t.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  {todaysTransactions.map((t) => {
+                    const time = new Date(t.transactionDate || t.createdAt).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    });
                     return (
                       <option key={t.id} value={t.id}>
-                        [{time}] {t.id} - {t.employeeName} ({t.menuItemName})
+                        [{time}] {t.id} - {t.fullName} ({t.menuItem})
                       </option>
                     );
                   })}
@@ -297,35 +299,33 @@ export const CorrectionRequests: React.FC = () => {
                   <div className="bg-[#F9FAFB]/50 border border-gray-100 rounded-[8px] p-4 text-xs space-y-2 select-none">
                     <div className="flex justify-between">
                       <span className="text-brand-gray-neutral font-medium">Employee Name:</span>
-                      <span className="text-brand-dark-green font-semibold">{selectedTxn.employeeName}</span>
+                      <span className="text-brand-dark-green font-semibold">{selectedTxn.fullName}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-brand-gray-neutral font-medium">Session:</span>
-                      <span className="text-brand-dark-green uppercase font-semibold">{selectedTxn.session}</span>
+                      <span className="text-brand-dark-green uppercase font-semibold">{selectedTxn.mealSession}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-brand-gray-neutral font-medium">Original Item:</span>
                       <span className="text-brand-error-red font-semibold line-through">
-                        {selectedTxn.menuItemName} ({selectedTxn.price.toFixed(2)} ETB)
+                        {selectedTxn.menuItem} ({(selectedTxn.menuPrice || 0).toFixed(2)} ETB)
                       </span>
                     </div>
                   </div>
 
                   {/* Correct item selector */}
                   <div className="space-y-1.5">
-                    <label className="block text-[13px] font-medium text-brand-dark-green">
-                      Correct Menu Item
-                    </label>
+                    <label className="block text-[13px] font-medium text-brand-dark-green">Correct Menu Item</label>
                     <select
                       required
                       value={requestedItemId}
-                      onChange={(e) => setRequestedItemId(e.target.value ? Number(e.target.value) : '')}
+                      onChange={(e) => setRequestedItemId(e.target.value)}
                       className="w-full h-[44px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer"
                     >
                       <option value="">-- Choose correct item --</option>
-                      {availableMenuItems.map(item => (
+                      {availableMenuItems.map((item) => (
                         <option key={item.id} value={item.id}>
-                          {item.name} ({item.price.toFixed(2)} ETB)
+                          {item.name} ({(item.currentPrice || 0).toFixed(2)} ETB)
                         </option>
                       ))}
                     </select>
@@ -334,10 +334,11 @@ export const CorrectionRequests: React.FC = () => {
                   {/* Reason Text */}
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center text-[13px]">
-                      <label className="font-medium text-brand-dark-green">
-                        Reason for Correction
-                      </label>
-                      <span className={`text-xs ${reason.length > 250 ? 'text-brand-error-red font-semibold' : 'text-brand-gray-neutral'}`}>
+                      <label className="font-medium text-brand-dark-green">Reason for Correction</label>
+                      <span
+                        className={`text-xs ${reason.length > 250 ? 'text-brand-error-red font-semibold' : 'text-brand-gray-neutral'
+                          }`}
+                      >
                         {reason.length}/250
                       </span>
                     </div>
@@ -346,7 +347,7 @@ export const CorrectionRequests: React.FC = () => {
                       value={reason}
                       onChange={(e) => setReason(e.target.value)}
                       maxLength={250}
-                      placeholder="Explain why this correction is necessary (max 250 characters)"
+                      placeholder="Explain why this correction is necessary (min 10 characters)"
                       className="w-full p-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green h-20 resize-none placeholder-brand-gray-neutral/60"
                     />
                   </div>
