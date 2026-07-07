@@ -1,64 +1,173 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { db, type Employee } from '../../db/db';
-import { MagnifyingGlass, Plus, Fingerprint, UploadSimple, FileCsv, X } from '@phosphor-icons/react';
+import axiosInstance from '../../client/axios';
+import { offlineDb } from '../../db/indexedDb';
+import {
+  MagnifyingGlass,
+  Plus,
+  Fingerprint,
+  UploadSimple,
+  FileCsv,
+  X,
+  CaretLeft,
+  CaretRight,
+  Check,
+  Warning,
+  Trash,
+} from '@phosphor-icons/react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
+import type { Employee } from '../../types/api';
 
 export const EmployeeManagement: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
-  
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalEmployees, setTotalEmployees] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchTimeout, setSearchTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const limit = 20;
+
   // Form states
   const [isNew, setIsNew] = useState(false);
   const [formId, setFormId] = useState('');
   const [formName, setFormName] = useState('');
-  const [formDept, setFormDept] = useState('Engineering');
-  const [formStatus, setFormStatus] = useState<'Active' | 'Inactive'>('Active');
+  const [formStatus, setFormStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
   const [formPhoto, setFormPhoto] = useState('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80');
   const [formPhotoFile, setFormPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [formFingerprint, setFormFingerprint] = useState(false);
-  
+  const [formFingerprintId, setFormFingerprintId] = useState<string>('');
+
   // Registration simulation state
   const [registeringBiometric, setRegisteringBiometric] = useState(false);
-  
+
   // Import states
   const [isImporting, setIsImporting] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importData, setImportData] = useState<any[]>([]);
   const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [previewToken, setPreviewToken] = useState<string | null>(null);
+  const [importStats, setImportStats] = useState<{ totalRows: number; validCount: number; errorCount: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  const fetchEmployees = async () => {
+  // ✅ FIXED: Fetch employees with pagination and search
+  const fetchEmployees = async (page: number = currentPage, search: string = searchTerm) => {
+    setIsLoading(true);
     try {
-      const list = await db.employees.toArray();
-      setEmployees(list);
-      if (list.length > 0 && !selectedEmp && !isNew) {
-        handleSelectEmployee(list[0]);
+      const params: any = {
+        page: page,
+        limit: limit
+      };
+
+      if (search.trim()) {
+        const isEmployeeNumber = /^EMP-\d+$/.test(search.trim()) || /^\d+$/.test(search.trim());
+        if (isEmployeeNumber) {
+          params.employeeNumber = search.trim();
+        } else {
+          params.name = search.trim();
+        }
+      }
+
+      const res = await axiosInstance.get('/api/employees', { params });
+
+      if (res.data?.success && res.data?.data) {
+        const list = Array.isArray(res.data.data.employees) ? res.data.data.employees : [];
+        setEmployees(list);
+        setTotalEmployees(res.data.data.pagination?.total || list.length);
+        setTotalPages(res.data.data.pagination?.totalPages || Math.ceil((res.data.data.pagination?.total || list.length) / limit));
+
+        if (list.length > 0 && !selectedEmp && !isNew) {
+          handleSelectEmployee(list[0]);
+        } else if (list.length === 0 && selectedEmp) {
+          setSelectedEmp(null);
+          setIsNew(true);
+        }
+
+        try {
+          await offlineDb.offlineEmployees.clear();
+          if (list.length > 0) {
+            const offlineRecords = list.map((emp: Employee) => ({
+              id: emp.id,
+              employeeNumber: emp.employeeNumber,
+              fullName: emp.fullName,
+              status: emp.status,
+              photo: emp.photo,
+              fingerprintId: emp.fingerprintId,
+              mealsToday: emp.mealsToday
+            }));
+            await offlineDb.offlineEmployees.bulkAdd(offlineRecords);
+          }
+        } catch (dbErr) {
+          console.warn('Failed to cache employees locally:', dbErr);
+        }
+      } else {
+        setEmployees([]);
+        setTotalEmployees(0);
+        setTotalPages(1);
       }
     } catch (e) {
       console.error(e);
+      toast.error('Failed to load employees list');
+      setEmployees([]);
+      setTotalEmployees(0);
+      setTotalPages(1);
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // Initial load
   useEffect(() => {
-    fetchEmployees();
+    fetchEmployees(1, '');
   }, []);
+
+  // Handle search with debounce
+  useEffect(() => {
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+
+    const timeout = setTimeout(() => {
+      setIsSearching(true);
+      setCurrentPage(1);
+      fetchEmployees(1, searchTerm);
+    }, 500);
+
+    setSearchTimeout(timeout);
+
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
+  }, [searchTerm]);
+
+  // Handle page change
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+      fetchEmployees(newPage, searchTerm);
+    }
+  };
 
   const handleSelectEmployee = (emp: Employee) => {
     setIsNew(false);
     setSelectedEmp(emp);
-    setFormId(emp.id);
-    setFormName(emp.name);
-    setFormDept(emp.department);
-    setFormStatus(emp.status);
-    setFormPhoto(emp.photo);
+    setFormId(emp.employeeNumber || emp.id);
+    setFormName(emp.fullName);
+    setFormStatus(emp.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE');
+    setFormPhoto(emp.photo || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80');
     setFormPhotoFile(null);
     setPhotoPreview(null);
-    setFormFingerprint(emp.fingerprintRegistered);
+    setFormFingerprint(!!emp.fingerprintId);
+    setFormFingerprintId(emp.fingerprintId || '');
   };
 
   const handleCreateNewClick = () => {
@@ -66,14 +175,14 @@ export const EmployeeManagement: React.FC = () => {
     setSelectedEmp(null);
     setPhotoPreview(null);
     setFormPhotoFile(null);
-    
-    const nextNum = employees.length + 129;
+
+    const nextNum = totalEmployees + 129;
     setFormId(`EMP-${nextNum}`);
     setFormName('');
-    setFormDept('Engineering');
-    setFormStatus('Active');
+    setFormStatus('ACTIVE');
     setFormPhoto('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80');
     setFormFingerprint(false);
+    setFormFingerprintId('');
   };
 
   // Photo upload handlers
@@ -81,29 +190,25 @@ export const EmployeeManagement: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     if (!validTypes.includes(file.type)) {
       toast.error('Please upload a valid image file (JPG, PNG, GIF, WEBP)');
       return;
     }
 
-    // Validate file size (max 2MB)
     if (file.size > 2 * 1024 * 1024) {
       toast.error('Image size should be less than 2MB');
       return;
     }
 
     setFormPhotoFile(file);
-    
-    // Create preview URL
+
     const reader = new FileReader();
     reader.onload = (event) => {
       setPhotoPreview(event.target?.result as string);
     };
     reader.readAsDataURL(file);
-    
-    toast.success('Photo uploaded successfully!');
+    toast.success('Photo selected!');
   };
 
   const handleRemovePhoto = () => {
@@ -112,12 +217,10 @@ export const EmployeeManagement: React.FC = () => {
     if (photoInputRef.current) {
       photoInputRef.current.value = '';
     }
-    // Set to default photo
     setFormPhoto('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80');
     toast.success('Photo removed');
   };
 
-  // Convert file to base64 for storage
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -130,11 +233,13 @@ export const EmployeeManagement: React.FC = () => {
   const handleRegisterFingerprint = () => {
     setRegisteringBiometric(true);
     toast.loading('Place finger on scanner terminal...', { id: 'fp-scan' });
-    
+
     setTimeout(() => {
       setRegisteringBiometric(false);
       setFormFingerprint(true);
-      toast.success('Fingerprint templates recorded successfully!', { id: 'fp-scan' });
+      const generatedFpId = `FP-${formId || 'NEW'}-${Math.floor(1000 + Math.random() * 9000)}`;
+      setFormFingerprintId(generatedFpId);
+      toast.success(`Fingerprint registered: ${generatedFpId}`, { id: 'fp-scan' });
     }, 2000);
   };
 
@@ -145,65 +250,192 @@ export const EmployeeManagement: React.FC = () => {
       return;
     }
 
+    setIsLoading(true);
     try {
       let photoUrl = formPhoto;
-      
-      // If there's a new photo file, convert to base64 and store
       if (formPhotoFile) {
         photoUrl = await fileToBase64(formPhotoFile);
       }
 
-      const empData: Employee = {
-        id: formId,
-        name: formName.trim(),
-        department: formDept,
+      const payload = {
+        employeeNumber: formId,
+        fullName: formName.trim(),
         status: formStatus,
         photo: photoUrl,
-        fingerprintRegistered: formFingerprint,
-        fingerprintTemplate: formFingerprint ? `fingerprint_template_${formId.toLowerCase()}` : undefined
+        fingerprintId: formFingerprint ? formFingerprintId || `FP-${formId}` : null
       };
 
-      await db.employees.put(empData);
-      
-      await db.auditLogs.add({
-        timestamp: new Date(),
-        user: 'admin',
-        action: isNew ? 'Create Employee' : 'Update Employee',
-        entity: 'Employee',
-        entityId: formId,
-        details: JSON.stringify({ 
-          name: empData.name, 
-          department: empData.department, 
-          status: empData.status,
-          hasPhoto: !!formPhotoFile
-        })
-      });
+      let response;
+      if (isNew) {
+        response = await axiosInstance.post('/api/employees', payload);
+      } else {
+        const targetId = selectedEmp?.id || formId;
+        response = await axiosInstance.put(`/api/employees/${targetId}`, payload);
+      }
 
-      toast.success(isNew ? 'Employee registered successfully!' : 'Changes saved successfully!');
-      
-      setIsNew(false);
-      setFormPhotoFile(null);
-      setPhotoPreview(null);
-      await fetchEmployees();
-      handleSelectEmployee(empData);
-    } catch (err) {
+      if (response.data?.success) {
+        toast.success(isNew ? 'Employee registered successfully!' : 'Changes saved successfully!');
+        setIsNew(false);
+        setFormPhotoFile(null);
+        setPhotoPreview(null);
+        await fetchEmployees(currentPage, searchTerm);
+      }
+    } catch (err: any) {
       console.error(err);
-      toast.error('Failed to save employee profile.');
+      toast.error(err.response?.data?.message || 'Failed to save employee profile.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Excel Import Functions
-  const handleFileUpload = (file: File) => {
+  // Excel Import Functions with column mapping
+  const handleFileUpload = async (file: File) => {
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const data = new Uint8Array(event.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(firstSheet);
-        
-        setImportData(jsonData);
-        validateImportData(jsonData);
+
+        // ✅ FIXED: TypeScript error - properly type the jsonData
+        if (jsonData && jsonData.length > 0) {
+          const firstRow = jsonData[0] as Record<string, unknown>;
+          console.log('Excel columns found:', Object.keys(firstRow));
+        }
+
+        const mappedData = jsonData.map((row: any) => {
+          let employeeNumber = '';
+          let fullName = '';
+          let fingerprintId = '';
+          let photo = '';
+
+          const possibleEmployeeNumberColumns = ['Pers.No.', 'EmployeeNumber', 'Employee ID', 'ID', 'PersNo', 'Pers.No', 'Employee No'];
+          for (const col of possibleEmployeeNumberColumns) {
+            if (row[col] !== undefined && row[col] !== null && row[col] !== '') {
+              employeeNumber = String(row[col]).trim();
+              break;
+            }
+          }
+
+          const possibleNameColumns = ['Employee Name', 'fullName', 'Name', 'Full Name', 'EmployeeName', 'FullName'];
+          for (const col of possibleNameColumns) {
+            if (row[col] !== undefined && row[col] !== null && row[col] !== '') {
+              fullName = String(row[col]).trim();
+              break;
+            }
+          }
+
+          const possibleFingerprintColumns = ['Fingerprint', 'fingerprintId', 'Biometric', 'FP'];
+          for (const col of possibleFingerprintColumns) {
+            if (row[col] !== undefined && row[col] !== null && row[col] !== '') {
+              fingerprintId = String(row[col]).trim();
+              break;
+            }
+          }
+
+          const possiblePhotoColumns = ['Photo', 'photo', 'Image', 'image'];
+          for (const col of possiblePhotoColumns) {
+            if (row[col] !== undefined && row[col] !== null && row[col] !== '') {
+              photo = String(row[col]).trim();
+              break;
+            }
+          }
+
+          let finalFingerprintId = fingerprintId;
+          const fingerprintValue = String(fingerprintId).toLowerCase();
+
+          if (fingerprintValue === 'yes' || fingerprintValue === 'true') {
+            finalFingerprintId = `FP-${employeeNumber || Date.now()}`;
+          } else if (fingerprintValue === 'no' || fingerprintValue === 'false' || fingerprintValue === '') {
+            finalFingerprintId = '';
+          }
+
+          return {
+            EmployeeNumber: employeeNumber,
+            fullName: fullName,
+            fingerprintId: finalFingerprintId || null,
+            photo: photo || null
+          };
+        });
+
+        const validRows = mappedData.filter(row =>
+          row.EmployeeNumber && row.fullName
+        );
+
+        const errors: string[] = [];
+        mappedData.forEach((row, index) => {
+          if (!row.EmployeeNumber) {
+            errors.push(`Row ${index + 2}: Missing Employee Number (required column: Pers.No. or EmployeeNumber)`);
+          }
+          if (!row.fullName) {
+            errors.push(`Row ${index + 2}: Missing Employee Name (required column: Employee Name or fullName)`);
+          }
+        });
+
+        if (validRows.length === 0) {
+          toast.error('No valid rows found. Please check the template format.');
+          setImportErrors(['No valid rows found. Required columns: Pers.No. and Employee Name']);
+          setImportData([]);
+          return;
+        }
+
+        const ws2 = XLSX.utils.json_to_sheet(validRows);
+        const wb2 = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb2, ws2, 'Employees');
+        const excelBuffer = XLSX.write(wb2, { bookType: 'xlsx', type: 'array' });
+        const mappedFile = new File([excelBuffer], 'mapped_employees.xlsx', {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        });
+
+        const uploadFormData = new FormData();
+        uploadFormData.append('file', mappedFile);
+
+        setIsImporting(true);
+        try {
+          const res = await axiosInstance.post('/api/employees/import/preview', uploadFormData, {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+          });
+
+          if (res.data?.success && res.data?.data) {
+            const data = res.data.data;
+            setImportData(data.validRows || []);
+            setImportStats({
+              totalRows: data.totalRows || 0,
+              validCount: data.validCount || 0,
+              errorCount: data.errorCount || 0
+            });
+
+            if (data.previewToken) {
+              setPreviewToken(data.previewToken);
+            }
+
+            if (data.errors && data.errors.length > 0) {
+              const errorMessages = data.errors.map((err: any) =>
+                `Row ${err.row}: ${err.field} - ${err.message}`
+              );
+              setImportErrors([...errors, ...errorMessages]);
+              toast.error(`Found ${data.errors.length} validation errors`);
+            } else if (errors.length > 0) {
+              setImportErrors(errors);
+              toast.error(`Loaded with ${errors.length} warnings`);
+            } else {
+              setImportErrors([]);
+              toast.success(`Loaded ${data.validCount} employees successfully`);
+            }
+          } else {
+            toast.error('Failed to preview import data');
+          }
+        } catch (error: any) {
+          console.error('Error uploading file:', error);
+          toast.error(error.response?.data?.message || 'Failed to process file');
+          setImportErrors([error.response?.data?.message || 'Failed to process file']);
+        } finally {
+          setIsImporting(false);
+        }
+
       } catch (error) {
         console.error('Error reading file:', error);
         toast.error('Failed to read the file. Please check the format.');
@@ -243,19 +475,14 @@ export const EmployeeManagement: React.FC = () => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
-    
+
     const files = e.dataTransfer.files;
     if (files.length > 0) {
       const file = files[0];
-      const validTypes = [
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-excel',
-        'text/csv'
-      ];
       const validExtensions = ['.xlsx', '.xls', '.csv'];
       const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-      
-      if (validTypes.includes(file.type) || validExtensions.includes(fileExtension)) {
+
+      if (validExtensions.includes(fileExtension)) {
         handleFileUpload(file);
       } else {
         toast.error('Please upload an Excel or CSV file');
@@ -263,173 +490,45 @@ export const EmployeeManagement: React.FC = () => {
     }
   };
 
-  const validateImportData = (data: any[]) => {
-    const errors: string[] = [];
-    const requiredFields = ['Name', 'Department', 'Status'];
-    
-    data.forEach((row, index) => {
-      const rowNum = index + 2;
-      const rowErrors: string[] = [];
-      
-      // Check each required field
-      requiredFields.forEach(field => {
-        if (!row[field] || row[field].toString().trim() === '') {
-          rowErrors.push(`Missing "${field}"`);
-        }
-      });
-
-      // Validate Status
-      if (row.Status && !['Active', 'Inactive'].includes(row.Status)) {
-        rowErrors.push(`Status must be "Active" or "Inactive" (got "${row.Status}")`);
-      }
-
-      // Validate Department
-      if (row.Department && typeof row.Department !== 'string') {
-        rowErrors.push('Department must be text');
-      }
-
-      // Validate Name
-      if (row.Name && typeof row.Name !== 'string') {
-        rowErrors.push('Name must be text');
-      }
-
-      // If there are errors for this row, combine them
-      if (rowErrors.length > 0) {
-        errors.push(`Row ${rowNum}: ${rowErrors.join(', ')}`);
-      }
-    });
-
-    setImportErrors(errors);
-    
-    if (errors.length === 0) {
-      toast.success(`Successfully loaded ${data.length} employees for import`);
-    } else {
-      toast.error(`Found ${errors.length} errors in the data`);
-    }
-  };
-
-  const handleImportEmployees = async () => {
+  const handleConfirmImport = async () => {
     if (importData.length === 0) {
       toast.error('No data to import');
       return;
     }
 
     if (importErrors.length > 0) {
-      toast.error('Please fix the errors before importing');
+      toast.error('Fix validation errors before importing');
+      return;
+    }
+
+    if (!previewToken) {
+      toast.error('No preview token found. Please upload the file again.');
       return;
     }
 
     setIsImporting(true);
-    let imported = 0;
-    let failed = 0;
-    const failedRows: string[] = [];
-
     try {
-      const currentEmployees = await db.employees.toArray();
-      const existingIds = new Set(currentEmployees.map(emp => emp.id));
+      const res = await axiosInstance.post('/api/employees/import/confirm', {
+        previewToken: previewToken
+      });
 
-      for (let i = 0; i < importData.length; i++) {
-        const row = importData[i];
-        const rowNum = i + 2;
-        
-        try {
-          // Validate required fields for each row before import
-          const rowErrors: string[] = [];
-          if (!row['Name'] || row['Name'].toString().trim() === '') {
-            rowErrors.push('Name is required');
-          }
-          if (!row['Department'] || row['Department'].toString().trim() === '') {
-            rowErrors.push('Department is required');
-          }
-          if (!row['Status'] || !['Active', 'Inactive'].includes(row['Status'])) {
-            rowErrors.push('Status must be "Active" or "Inactive"');
-          }
-
-          if (rowErrors.length > 0) {
-            failedRows.push(`Row ${rowNum}: ${rowErrors.join(', ')}`);
-            failed++;
-            continue;
-          }
-
-          let id = row['Employee ID'] || row['ID'] || `EMP-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
-          
-          if (existingIds.has(id)) {
-            id = `EMP-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-          }
-
-          const employee: Employee = {
-            id: id,
-            name: row['Name'].toString().trim(),
-            department: row['Department'].toString().trim(),
-            status: row['Status'] === 'Inactive' ? 'Inactive' : 'Active',
-            photo: row['Photo'] || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80',
-            fingerprintRegistered: row['Fingerprint'] === 'Yes' || row['Fingerprint'] === true,
-            fingerprintTemplate: row['Fingerprint'] === 'Yes' || row['Fingerprint'] === true 
-              ? `fingerprint_template_${id.toLowerCase()}` 
-              : undefined
-          };
-
-          await db.employees.put(employee);
-          existingIds.add(id);
-          imported++;
-        } catch (error) {
-          console.error('Error importing row:', error);
-          failedRows.push(`Row ${rowNum}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          failed++;
+      if (res.data?.success) {
+        toast.success(res.data.message || 'Import completed successfully!');
+        setShowImportModal(false);
+        setImportData([]);
+        setImportErrors([]);
+        setPreviewToken(null);
+        setImportStats(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
         }
-      }
-
-      // Log any failed rows
-      if (failedRows.length > 0) {
-        console.warn('Failed imports:', failedRows.join('\n'));
-        
-        await db.auditLogs.add({
-          timestamp: new Date(),
-          user: 'admin',
-          action: 'Import Employees - Partial Failure',
-          entity: 'Employee',
-          entityId: 'bulk-import',
-          details: JSON.stringify({ 
-            total: importData.length, 
-            imported, 
-            failed,
-            failedRows: failedRows,
-            timestamp: new Date().toISOString()
-          })
-        });
+        await fetchEmployees(currentPage, searchTerm);
       } else {
-        await db.auditLogs.add({
-          timestamp: new Date(),
-          user: 'admin',
-          action: 'Import Employees',
-          entity: 'Employee',
-          entityId: 'bulk-import',
-          details: JSON.stringify({ 
-            total: importData.length, 
-            imported, 
-            failed,
-            timestamp: new Date().toISOString()
-          })
-        });
+        toast.error(res.data?.message || 'Failed to confirm import');
       }
-
-      if (failed > 0) {
-        toast.error(`Imported ${imported} employees, ${failed} failed. Check console for details.`);
-      } else {
-        toast.success(`Successfully imported ${imported} employees`);
-      }
-      
-      await fetchEmployees();
-      setShowImportModal(false);
-      setImportData([]);
-      setImportErrors([]);
-      setIsDragging(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    } catch (error) {
-      console.error('Import failed:', error);
-      toast.error('Failed to import employees');
+    } catch (error: any) {
+      console.error('Error confirming import:', error);
+      toast.error(error.response?.data?.message || 'Failed to complete import');
     } finally {
       setIsImporting(false);
     }
@@ -438,12 +537,16 @@ export const EmployeeManagement: React.FC = () => {
   const downloadTemplate = () => {
     const template = [
       {
-        'Employee ID': 'EMP-00123',
-        'Name': 'John Doe',
-        'Department': 'Engineering',
-        'Status': 'Active',
+        'Pers.No.': 'EMP-00123',
+        'Employee Name': 'Abebe Girma',
         'Fingerprint': 'Yes',
-        'Photo': 'https://example.com/photo.jpg'
+        'Photo': ''
+      },
+      {
+        'Pers.No.': 'EMP-00124',
+        'Employee Name': 'Tigist Haile',
+        'Fingerprint': 'No',
+        'Photo': ''
       }
     ];
 
@@ -453,11 +556,6 @@ export const EmployeeManagement: React.FC = () => {
     XLSX.writeFile(wb, 'employee_import_template.xlsx');
     toast.success('Template downloaded!');
   };
-
-  const filteredEmployees = employees.filter(emp => 
-    emp.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    emp.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   return (
     <div className="space-y-6">
@@ -482,21 +580,29 @@ export const EmployeeManagement: React.FC = () => {
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 items-start">
-        
+
         {/* MASTER PANEL */}
         <div className="lg:col-span-4 bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden flex flex-col h-[600px]">
-          
+
           {/* Search and Add Header */}
           <div className="p-4 border-b border-gray-100 flex gap-2 select-none">
             <div className="relative flex-1">
               <input
                 type="text"
-                placeholder="Search name or ID..."
+                placeholder="Search by name or ID..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full h-10 pl-9 pr-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-xs text-brand-dark-green"
               />
               <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-gray-neutral" />
+              {isSearching && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <svg className="animate-spin h-4 w-4 text-brand-gold" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </div>
+              )}
             </div>
             <button
               onClick={handleCreateNewClick}
@@ -510,44 +616,45 @@ export const EmployeeManagement: React.FC = () => {
 
           {/* List panel */}
           <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
-            {filteredEmployees.length === 0 ? (
+            {isLoading ? (
+              <div className="p-8 text-center text-xs text-brand-gray-neutral">Loading employee directory...</div>
+            ) : employees.length === 0 ? (
               <div className="p-8 text-center text-brand-gray-neutral text-xs select-none">
-                No employees matching search criteria
+                {searchTerm ? 'No employees matching search criteria' : 'No employees registered yet'}
               </div>
             ) : (
-              filteredEmployees.map((emp) => {
+              employees.map((emp) => {
                 const isSelected = selectedEmp?.id === emp.id;
+                const empNum = emp.employeeNumber || emp.id;
                 return (
                   <div
                     key={emp.id}
                     onClick={() => handleSelectEmployee(emp)}
-                    className={`p-3.5 flex items-center justify-between cursor-pointer transition-colors ${
-                      isSelected 
-                        ? 'bg-brand-light-green/20' 
-                        : 'hover:bg-[#F9FAFB]'
-                    }`}
+                    className={`p-3.5 flex items-center justify-between cursor-pointer transition-colors ${isSelected
+                      ? 'bg-brand-light-green/20'
+                      : 'hover:bg-[#F9FAFB]'
+                      }`}
                   >
                     <div className="flex items-center gap-3">
-                      <img 
-                        src={emp.photo} 
-                        alt={emp.name} 
+                      <img
+                        src={emp.photo || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80'}
+                        alt={emp.fullName}
                         className="w-10 h-10 rounded-full object-cover border border-brand-light-green/30 shrink-0"
                       />
                       <div>
                         <h4 className="text-brand-dark-green font-semibold text-xs leading-normal">
-                          {emp.name}
+                          {emp.fullName}
                         </h4>
-                        <p className="text-brand-gray-neutral text-[10px]">{emp.department}</p>
                       </div>
                     </div>
-                    
+
                     <div className="text-right flex flex-col items-end gap-1">
                       <span className="text-[10px] font-mono text-brand-gray-neutral bg-gray-50 px-1 py-0.5 rounded border border-gray-100">
-                        {emp.id}
+                        {empNum}
                       </span>
                       <div className="flex items-center gap-1">
-                        <span className={`w-1.5 h-1.5 rounded-full ${emp.status === 'Active' ? 'bg-brand-dark-green' : 'bg-brand-gray-neutral'}`} />
-                        <span className="text-[9px] text-brand-gray-neutral">{emp.status}</span>
+                        <span className={`w-1.5 h-1.5 rounded-full ${emp.status !== 'INACTIVE' ? 'bg-brand-dark-green' : 'bg-brand-gray-neutral'}`} />
+                        <span className="text-[9px] text-brand-gray-neutral">{emp.status === 'INACTIVE' ? 'Inactive' : 'Active'}</span>
                       </div>
                     </div>
                   </div>
@@ -555,12 +662,44 @@ export const EmployeeManagement: React.FC = () => {
               })
             )}
           </div>
+
+          {/* Pagination Footer */}
+          {totalEmployees > 0 && (
+            <div className="border-t border-gray-100 p-3 flex items-center justify-between select-none bg-gray-50/50">
+              <span className="text-[10px] text-brand-gray-neutral">
+                {employees.length > 0 ? (
+                  <>Showing {(currentPage - 1) * limit + 1} - {Math.min(currentPage * limit, totalEmployees)} of {totalEmployees}</>
+                ) : (
+                  <>0 of {totalEmployees}</>
+                )}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1 || isLoading}
+                  className="p-1 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  <CaretLeft size={16} className="text-brand-gray-neutral" />
+                </button>
+                <span className="text-[10px] text-brand-dark-green font-medium px-2">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages || isLoading}
+                  className="p-1 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  <CaretRight size={16} className="text-brand-gray-neutral" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* DETAIL PANEL */}
         <div className="lg:col-span-6 bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-8 h-[600px] flex flex-col justify-between">
           <form onSubmit={handleSave} className="space-y-6 overflow-y-auto pr-1 flex-1">
-            
+
             <div className="border-b border-gray-100 pb-3 flex items-center justify-between select-none">
               <h3 className="text-brand-dark-green font-semibold text-base">
                 {isNew ? 'Register New Employee' : 'Employee Details'}
@@ -572,12 +711,12 @@ export const EmployeeManagement: React.FC = () => {
               )}
             </div>
 
-            {/* Photo Upload Section */}
+            {/* Photo Section */}
             <div className="flex items-center gap-6">
               <div className="relative">
-                <img 
-                  src={photoPreview || formPhoto} 
-                  alt="Profile Preview" 
+                <img
+                  src={photoPreview || formPhoto}
+                  alt="Profile Preview"
                   className="w-[96px] h-[96px] rounded-full object-cover border-2 border-brand-light-green shadow-sm"
                 />
                 {formPhotoFile && (
@@ -609,7 +748,7 @@ export const EmployeeManagement: React.FC = () => {
                       onClick={handleRemovePhoto}
                       className="text-brand-error-red text-xs font-semibold hover:underline flex items-center gap-1"
                     >
-                      <X size={14} />
+                      <Trash size={14} />
                       Remove
                     </button>
                   )}
@@ -617,11 +756,6 @@ export const EmployeeManagement: React.FC = () => {
                 <p className="text-brand-gray-neutral text-[10px]">
                   JPG, PNG, GIF, WEBP. Max 2MB.
                 </p>
-                {formPhotoFile && (
-                  <p className="text-brand-dark-green text-[10px] font-medium">
-                    {formPhotoFile.name} ({(formPhotoFile.size / 1024).toFixed(1)} KB)
-                  </p>
-                )}
               </div>
             </div>
 
@@ -633,8 +767,9 @@ export const EmployeeManagement: React.FC = () => {
                 <input
                   type="text"
                   value={formId}
-                  disabled
-                  className="w-full h-[44px] px-3 bg-gray-50 border border-gray-200 text-brand-dark-green font-mono text-[13px] rounded-[8px] cursor-default"
+                  disabled={!isNew}
+                  onChange={(e) => setFormId(e.target.value)}
+                  className="w-full h-[44px] px-3 bg-gray-50 border border-gray-200 text-brand-dark-green font-mono text-[13px] rounded-[8px]"
                 />
               </div>
 
@@ -652,24 +787,6 @@ export const EmployeeManagement: React.FC = () => {
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="block text-[13px] font-medium text-brand-dark-green">
-                  Department
-                </label>
-                <select
-                  value={formDept}
-                  onChange={(e) => setFormDept(e.target.value)}
-                  className="w-full h-[44px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer"
-                >
-                  <option value="Engineering">Engineering</option>
-                  <option value="Human Resources">Human Resources</option>
-                  <option value="Finance">Finance</option>
-                  <option value="Operations">Operations</option>
-                  <option value="Marketing">Marketing</option>
-                  <option value="Security">Security</option>
-                </select>
-              </div>
-
               <div className="space-y-1.5 select-none">
                 <label className="block text-[13px] font-medium text-brand-dark-green">
                   Status State
@@ -677,23 +794,21 @@ export const EmployeeManagement: React.FC = () => {
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => setFormStatus('Active')}
-                    className={`h-[44px] flex-1 rounded-[8px] text-xs font-semibold transition border ${
-                      formStatus === 'Active'
-                        ? 'bg-brand-dark-green text-brand-white border-brand-dark-green'
-                        : 'bg-brand-white border-gray-300 text-brand-gray-neutral hover:bg-gray-50'
-                    }`}
+                    onClick={() => setFormStatus('ACTIVE')}
+                    className={`h-[44px] flex-1 rounded-[8px] text-xs font-semibold transition border ${formStatus === 'ACTIVE'
+                      ? 'bg-brand-dark-green text-brand-white border-brand-dark-green'
+                      : 'bg-brand-white border-gray-300 text-brand-gray-neutral hover:bg-gray-50'
+                      }`}
                   >
                     Active
                   </button>
                   <button
                     type="button"
-                    onClick={() => setFormStatus('Inactive')}
-                    className={`h-[44px] flex-1 rounded-[8px] text-xs font-semibold transition border ${
-                      formStatus === 'Inactive'
-                        ? 'bg-brand-error-red text-brand-white border-brand-error-red'
-                        : 'bg-brand-white border-gray-300 text-brand-gray-neutral hover:bg-gray-50'
-                    }`}
+                    onClick={() => setFormStatus('INACTIVE')}
+                    className={`h-[44px] flex-1 rounded-[8px] text-xs font-semibold transition border ${formStatus === 'INACTIVE'
+                      ? 'bg-brand-error-red text-brand-white border-brand-error-red'
+                      : 'bg-brand-white border-gray-300 text-brand-gray-neutral hover:bg-gray-50'
+                      }`}
                   >
                     Inactive
                   </button>
@@ -707,9 +822,8 @@ export const EmployeeManagement: React.FC = () => {
                   <Fingerprint size={20} className={formFingerprint ? 'text-brand-dark-green' : 'text-brand-gray-neutral'} />
                   <span className="text-sm font-semibold text-brand-dark-green">Biometric Profile</span>
                 </div>
-                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded select-none ${
-                  formFingerprint ? 'bg-brand-dark-green/10 text-brand-dark-green' : 'bg-gray-200 text-brand-gray-neutral'
-                }`}>
+                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded select-none ${formFingerprint ? 'bg-brand-dark-green/10 text-brand-dark-green' : 'bg-gray-200 text-brand-gray-neutral'
+                  }`}>
                   {formFingerprint ? 'Template Registered' : 'Not Configured'}
                 </span>
               </div>
@@ -729,7 +843,7 @@ export const EmployeeManagement: React.FC = () => {
           </form>
 
           <div className="border-t border-gray-100 pt-4 flex justify-end gap-3 select-none">
-            {isNew ? (
+            {isNew && (
               <button
                 type="button"
                 onClick={() => {
@@ -742,7 +856,7 @@ export const EmployeeManagement: React.FC = () => {
               >
                 Cancel
               </button>
-            ) : null}
+            )}
             <button
               onClick={handleSave}
               className="px-6 h-[44px] bg-brand-gold text-brand-white rounded-[8px] font-medium text-sm hover:opacity-90 active:scale-[0.99] transition"
@@ -756,33 +870,37 @@ export const EmployeeManagement: React.FC = () => {
       {/* IMPORT MODAL */}
       {showImportModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-brand-white rounded-[12px] p-6 max-w-[600px] w-full border border-[rgba(50,100,50,0.15)] shadow-xl space-y-5">
-            
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3 select-none">
+          <div className="bg-brand-white rounded-[12px] p-6 max-w-[700px] w-full border border-[rgba(50,100,50,0.15)] shadow-xl space-y-5 max-h-[90vh] overflow-y-auto">
+
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3 select-none sticky top-0 bg-white z-10">
               <h3 className="text-brand-dark-green font-semibold text-[18px] flex items-center gap-2">
                 <FileCsv size={22} className="text-brand-gold" />
                 Import Employees
               </h3>
-              <button 
+              <button
                 onClick={() => {
                   setShowImportModal(false);
                   setImportData([]);
                   setImportErrors([]);
+                  setPreviewToken(null);
+                  setImportStats(null);
                   setIsDragging(false);
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
                 }}
-                className="text-brand-gray-neutral hover:text-brand-dark-green font-medium text-lg focus:outline-none"
+                className="p-1 text-brand-gray-neutral hover:text-brand-dark-green rounded-full hover:bg-gray-100 transition-colors focus:outline-none"
               >
-                ✕
+                <X size={20} />
               </button>
             </div>
 
             <div className="space-y-4">
               <div
-                className={`border-2 border-dashed rounded-[8px] p-8 text-center transition-all duration-200 ${
-                  isDragging 
-                    ? 'border-brand-gold bg-brand-gold/5' 
-                    : 'border-gray-300 hover:border-brand-gold'
-                }`}
+                className={`border-2 border-dashed rounded-[8px] p-8 text-center transition-all duration-200 ${isDragging
+                  ? 'border-brand-gold bg-brand-gold/5'
+                  : 'border-gray-300 hover:border-brand-gold'
+                  }`}
                 onDragEnter={handleDragEnter}
                 onDragLeave={handleDragLeave}
                 onDragOver={handleDragOver}
@@ -810,17 +928,28 @@ export const EmployeeManagement: React.FC = () => {
                       <p className="text-brand-gray-neutral text-xs">
                         Drag and drop or click to browse
                       </p>
-                      <p className="text-brand-gray-neutral text-[10px] mt-2">
-                        Supported formats: .xlsx, .xls, .csv
-                      </p>
                     </>
                   )}
                 </label>
-                
-                {importData.length > 0 && (
-                  <div className="mt-3 text-xs text-brand-dark-green bg-brand-light-green/20 px-3 py-1.5 rounded-full inline-flex items-center gap-2">
-                    <FileCsv size={14} className="text-brand-gold" />
-                    <span>{importData.length} rows loaded</span>
+
+                {importStats && (
+                  <div className="mt-3 flex items-center justify-center gap-4 text-xs">
+                    <span className="text-brand-dark-green bg-brand-light-green/20 px-3 py-1.5 rounded-full inline-flex items-center gap-2">
+                      <FileCsv size={14} className="text-brand-gold" />
+                      <span>{importStats.totalRows} rows total</span>
+                    </span>
+                    {importStats.validCount > 0 && (
+                      <span className="text-green-700 bg-green-100 px-3 py-1.5 rounded-full">
+                        <Check size={14} className="inline mr-1" />
+                        {importStats.validCount} valid
+                      </span>
+                    )}
+                    {importStats.errorCount > 0 && (
+                      <span className="text-red-700 bg-red-100 px-3 py-1.5 rounded-full">
+                        <X size={14} className="inline mr-1" />
+                        {importStats.errorCount} errors
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -834,7 +963,7 @@ export const EmployeeManagement: React.FC = () => {
                   Download Template
                 </button>
                 <span className="text-[10px] text-brand-gray-neutral">
-                  Required: Name, Department, Status
+                  Required: <strong>Pers.No.</strong>, <strong>Employee Name</strong> &nbsp;·&nbsp; Optional: Fingerprint, Photo
                 </span>
               </div>
 
@@ -854,21 +983,16 @@ export const EmployeeManagement: React.FC = () => {
                     {importData.slice(0, 5).map((row, index) => (
                       <div key={index} className="flex items-center gap-2 border-b border-gray-50 py-1">
                         <span className="text-brand-gray-neutral w-6">{index + 1}.</span>
+                        <span className="font-mono text-brand-gray-neutral text-[10px] bg-gray-50 px-1 rounded border border-gray-100">
+                          {row.EmployeeNumber || '—'}
+                        </span>
                         <span className="font-medium text-brand-dark-green">
-                          {row['Name'] || row['Full Name'] || 'Unknown'}
+                          {row.fullName || 'Unknown'}
                         </span>
-                        <span className="text-brand-gray-neutral">-</span>
-                        <span>{row['Department'] || 'Unassigned'}</span>
-                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
-                          row['Status'] === 'Active' 
-                            ? 'bg-green-100 text-green-700' 
-                            : 'bg-gray-100 text-gray-700'
-                        }`}>
-                          {row['Status'] || 'Active'}
-                        </span>
-                        {row['Fingerprint'] === 'Yes' && (
-                          <span className="text-[9px] text-brand-dark-green">
-                            <Fingerprint size={10} className="inline" />
+                        {row.fingerprintId && (
+                          <span className="text-[10px] text-brand-dark-green bg-brand-light-green/20 px-1.5 rounded inline-flex items-center gap-1">
+                            <Fingerprint size={10} />
+                            FP
                           </span>
                         )}
                       </div>
@@ -888,19 +1012,22 @@ export const EmployeeManagement: React.FC = () => {
                     Errors ({importErrors.length}):
                   </span>
                   {importErrors.map((error, index) => (
-                    <div key={index} className="text-[10px] text-brand-error-red/90 py-0.5">
-                      • {error}
+                    <div key={index} className="text-[10px] text-brand-error-red/90 py-0.5 flex items-start gap-1">
+                      <Warning size={12} className="shrink-0 mt-0.5" />
+                      <span>{error}</span>
                     </div>
                   ))}
                 </div>
               )}
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-3 pt-2 border-t border-gray-100">
                 <button
                   onClick={() => {
                     setShowImportModal(false);
                     setImportData([]);
                     setImportErrors([]);
+                    setPreviewToken(null);
+                    setImportStats(null);
                     setIsDragging(false);
                     if (fileInputRef.current) {
                       fileInputRef.current.value = '';
@@ -911,13 +1038,30 @@ export const EmployeeManagement: React.FC = () => {
                   Cancel
                 </button>
                 <button
-                  onClick={handleImportEmployees}
-                  disabled={importData.length === 0 || importErrors.length > 0 || isImporting}
-                  className="flex-1 h-[44px] bg-brand-gold text-brand-white rounded-[8px] font-medium text-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleConfirmImport}
+                  disabled={importData.length === 0 || importErrors.length > 0 || isImporting || !previewToken}
+                  className="flex-1 h-[44px] bg-brand-gold text-brand-white rounded-[8px] font-medium text-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {isImporting ? 'Importing...' : `Import ${importData.length} Employees`}
+                  {isImporting ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Importing...
+                    </>
+                  ) : (
+                    `Import ${importData.length} Employees`
+                  )}
                 </button>
               </div>
+
+              {!previewToken && importData.length > 0 && (
+                <div className="text-xs text-brand-error-red text-center flex items-center justify-center gap-1">
+                  <Warning size={14} />
+                  Please upload the file again to generate a preview token
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -925,3 +1069,5 @@ export const EmployeeManagement: React.FC = () => {
     </div>
   );
 };
+
+export default EmployeeManagement;

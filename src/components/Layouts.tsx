@@ -1,15 +1,15 @@
 import React from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { 
-  SignOut, 
-  House, 
-  Users, 
-  ForkKnife, 
-  CheckSquare, 
-  FileText, 
-  UserGear, 
-  Sliders, 
+import {
+  SignOut,
+  House,
+  Users,
+  ForkKnife,
+  CheckSquare,
+  FileText,
+  UserGear,
+  Sliders,
   Database,
   Check,
   WifiHigh,
@@ -34,11 +34,11 @@ export const AuthLayout: React.FC = () => {
 
 // ================= CASHIER LAYOUT =================
 export const CashierLayout: React.FC = () => {
-  const { 
-    currentUser, 
-    logout, 
-    isOffline, 
-    setOfflineMode, 
+  const {
+    currentUser,
+    logout,
+    isOffline,
+    setOfflineMode,
     cashierStep,
     goToStep
   } = useApp();
@@ -48,8 +48,8 @@ export const CashierLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
 
@@ -69,22 +69,21 @@ export const CashierLayout: React.FC = () => {
       <header className="h-[64px] border-b border-brand-light-green px-6 flex items-center justify-between bg-brand-white select-none">
         {/* Left: Logo */}
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/cashier')}>
-          <span className="text-brand-gold text-2xl font-bold font-mono"><img width='50px' src={logo}/></span>
+          <span className="text-brand-gold text-2xl font-bold font-mono"><img width='50px' src={logo} /></span>
           <span className="text-brand-dark-green font-semibold text-lg font-sans tracking-wide">Derba Cafeteria</span>
         </div>
 
         {/* Center: Title / Context */}
         <div className="hidden md:flex items-center gap-4">
           <span className="text-brand-dark-green font-medium text-[18px]">Meal Registration</span>
-          
+
           {/* Simulated Offline Toggle */}
           <button
             onClick={() => setOfflineMode(!isOffline)}
-            className={`text-xs py-1 px-3 rounded-full border transition-all duration-200 flex items-center gap-1 ${
-              isOffline 
-                ? 'bg-brand-error-red/10 text-brand-error-red border-brand-error-red/30 hover:bg-brand-error-red/20' 
+            className={`text-xs py-1 px-3 rounded-full border transition-all duration-200 flex items-center gap-1 ${isOffline
+                ? 'bg-brand-error-red/10 text-brand-error-red border-brand-error-red/30 hover:bg-brand-error-red/20'
                 : 'bg-brand-dark-green/10 text-brand-dark-green border-brand-dark-green/20 hover:bg-brand-dark-green/20'
-            }`}
+              }`}
           >
             {isOffline ? <WifiSlash size={14} /> : <WifiHigh size={14} />}
             <span>{isOffline ? 'Go Online' : 'Simulate Offline'}</span>
@@ -103,7 +102,7 @@ export const CashierLayout: React.FC = () => {
 
           <div className="flex items-center gap-4">
             <span className="text-brand-dark-green text-sm font-medium">
-              {currentUser?.username || 'Cashier'}
+              {currentUser?.email || 'Cashier'}
             </span>
             <button
               onClick={handleLogout}
@@ -120,34 +119,31 @@ export const CashierLayout: React.FC = () => {
         <div className="flex gap-4">
           <Link
             to="/cashier"
-            className={`text-sm py-1 px-3 rounded hover:bg-[#F9FAFB] transition ${
-              location.pathname === '/cashier' ? 'text-brand-gold font-medium' : 'text-brand-dark-green'
-            }`}
+            className={`text-sm py-1 px-3 rounded hover:bg-[#F9FAFB] transition ${location.pathname === '/cashier' ? 'text-brand-gold font-medium' : 'text-brand-dark-green'
+              }`}
           >
             Register Meal
           </Link>
           <Link
             to="/cashier/transactions"
-            className={`text-sm py-1 px-3 rounded hover:bg-[#F9FAFB] transition ${
-              location.pathname === '/cashier/transactions' ? 'text-brand-gold font-medium' : 'text-brand-dark-green'
-            }`}
+            className={`text-sm py-1 px-3 rounded hover:bg-[#F9FAFB] transition ${location.pathname === '/cashier/transactions' ? 'text-brand-gold font-medium' : 'text-brand-dark-green'
+              }`}
           >
             Today's Transactions
           </Link>
           <Link
             to="/cashier/corrections"
-            className={`text-sm py-1 px-3 rounded hover:bg-[#F9FAFB] transition ${
-              location.pathname === '/cashier/corrections' ? 'text-brand-gold font-medium' : 'text-brand-dark-green'
-            }`}
+            className={`text-sm py-1 px-3 rounded hover:bg-[#F9FAFB] transition ${location.pathname === '/cashier/corrections' ? 'text-brand-gold font-medium' : 'text-brand-dark-green'
+              }`}
           >
             Correction Requests
           </Link>
         </div>
-        
+
         {/* Simple redirection helper back to dashboards if login role warrants */}
-        {currentUser && currentUser.role !== 'Cashier' && (
+        {currentUser && currentUser.role !== 'CASHIER' && (
           <Link
-            to={currentUser.role === 'Admin' ? '/admin' : '/super-admin/subsidy'}
+            to={currentUser.role === 'ADMIN' ? '/admin' : '/super-admin/subsidy'}
             className="text-xs text-brand-dark-green underline hover:text-brand-gold"
           >
             Go to {currentUser.role} Panel
@@ -161,10 +157,10 @@ export const CashierLayout: React.FC = () => {
           <div className="flex items-center justify-between relative">
             {/* Horizontal Line Connector */}
             <div className="absolute left-[20px] right-[20px] top-[14px] h-[2px] bg-gray-200 -z-10" />
-            <div 
+            <div
               className="absolute left-[20px] top-[14px] h-[2px] bg-brand-dark-green transition-all duration-300 -z-10"
-              style={{ 
-                width: `${((Math.min(cashierStep, 4) - 1) / 3) * 100}%` 
+              style={{
+                width: `${((Math.min(cashierStep, 4) - 1) / 3) * 100}%`
               }}
             />
 
@@ -180,13 +176,12 @@ export const CashierLayout: React.FC = () => {
                   <button
                     disabled={isUpcoming || cashierStep === 5}
                     onClick={() => goToStep(step.num as CashierStep)}
-                    className={`w-[28px] h-[28px] rounded-full flex items-center justify-center text-xs font-semibold border-2 transition-all select-none ${
-                      isActive 
+                    className={`w-[28px] h-[28px] rounded-full flex items-center justify-center text-xs font-semibold border-2 transition-all select-none ${isActive
                         ? 'border-brand-dark-green bg-brand-dark-green text-brand-white'
                         : isCompleted
-                        ? 'border-brand-dark-green bg-brand-dark-green text-brand-white cursor-pointer'
-                        : 'border-gray-300 bg-brand-white text-brand-gray-neutral cursor-not-allowed'
-                    }`}
+                          ? 'border-brand-dark-green bg-brand-dark-green text-brand-white cursor-pointer'
+                          : 'border-gray-300 bg-brand-white text-brand-gray-neutral cursor-not-allowed'
+                      }`}
                   >
                     {isCompleted ? <Check size={14} weight="bold" /> : step.num}
                   </button>
@@ -226,8 +221,8 @@ const BaseAdminLayout: React.FC<SidebarProps> = ({ title, navItems }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
 
@@ -248,7 +243,7 @@ const BaseAdminLayout: React.FC<SidebarProps> = ({ title, navItems }) => {
         <div>
           {/* Logo Brand Area */}
           <div className="p-6 border-b border-brand-light-green/30 flex items-center gap-2">
-            <span className="text-brand-gold text-2xl font-bold font-mono"><img width='50px' src={logo}/></span>
+            <span className="text-brand-gold text-2xl font-bold font-mono"><img width='50px' src={logo} /></span>
             <span className="text-brand-dark-green font-semibold font-sans tracking-wide">Derba Cafeteria</span>
           </div>
 
@@ -266,11 +261,10 @@ const BaseAdminLayout: React.FC<SidebarProps> = ({ title, navItems }) => {
                 <Link
                   key={item.label}
                   to={item.path}
-                  className={`flex items-center gap-3 py-3 px-4 text-sm rounded transition-all select-none ${
-                    isActive
+                  className={`flex items-center gap-3 py-3 px-4 text-sm rounded transition-all select-none ${isActive
                       ? 'text-brand-gold font-medium bg-brand-light-green/10 border-l-[3px] border-brand-light-green'
                       : 'text-brand-dark-green hover:bg-[#F9FAFB]'
-                  }`}
+                    }`}
                 >
                   <item.icon size={20} className={isActive ? 'text-brand-gold' : 'text-brand-dark-green'} />
                   <span className="font-sans">{item.label}</span>
@@ -284,14 +278,14 @@ const BaseAdminLayout: React.FC<SidebarProps> = ({ title, navItems }) => {
         <div className="p-4 border-t border-brand-light-green/30 space-y-2 bg-[#F9FAFB]/50">
           <div className="text-xs">
             <p className="text-brand-dark-green font-semibold truncate">
-              {currentUser?.username || 'User'}
+              {currentUser?.email || 'User'}
             </p>
             <p className="text-brand-gray-neutral truncate">{currentUser?.email || ''}</p>
             <p className="text-[10px] text-brand-gold font-medium mt-0.5 tracking-wider uppercase">
               {currentUser?.role}
             </p>
           </div>
-          
+
           <div className="pt-2 flex flex-col gap-1.5">
             {/* Quick terminal redirection */}
             <Link
@@ -300,7 +294,7 @@ const BaseAdminLayout: React.FC<SidebarProps> = ({ title, navItems }) => {
             >
               Open Cashier Terminal
             </Link>
-            
+
             <button
               onClick={handleLogout}
               className="flex items-center justify-center gap-2 w-full py-2 px-3 text-xs font-medium border border-brand-error-red/20 text-brand-error-red rounded hover:bg-brand-error-red/5 transition-colors"
@@ -324,7 +318,7 @@ const BaseAdminLayout: React.FC<SidebarProps> = ({ title, navItems }) => {
             System Date: {new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
           </div>
         </header>
-        
+
         {/* Workspace Content */}
         <div className="flex-1 p-8 overflow-y-auto bg-brand-white">
           <div className="max-w-[1200px] mx-auto">

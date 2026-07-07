@@ -1,32 +1,41 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { db, seedDatabase, type Employee, type MenuItem, type Transaction, type User } from '../db/db';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import axiosInstance from '../client/axios';
+import { offlineDb, type OfflineEmployee } from '../db/indexedDb';
 import toast from 'react-hot-toast';
+import { clearTokens, getAccessToken, setTokens } from '../lib/auth/tokenStorage';
+import type { Employee, MenuItem, User } from '../types/api';
 
-// Types for Cashier Steps
 export type CashierStep = 1 | 2 | 3 | 4 | 5;
+
+interface LoginResult {
+  success: boolean;
+  error?: string;
+  redirectTo?: string;
+}
 
 interface AppContextType {
   currentUser: User | null;
-  login: (username: string, role: 'Admin' | 'Cashier' | 'Super Admin') => Promise<boolean>;
-  logout: () => void;
+  authLoading: boolean;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<LoginResult>;
+  logout: () => Promise<void>;
+  logoutAll: () => Promise<void>;
   isOffline: boolean;
   setOfflineMode: (offline: boolean) => void;
   syncOfflineTransactions: () => Promise<void>;
-  
-  // Cashier Flow State
+
   cashierStep: CashierStep;
   selectedEmployee: Employee | null;
   selectedSession: 'Breakfast' | 'Lunch' | 'Dinner' | null;
   selectedMenu: MenuItem | null;
   lastTransactionId: string | null;
-  
+
   setEmployee: (emp: Employee | null) => void;
   setSession: (sess: 'Breakfast' | 'Lunch' | 'Dinner' | null) => void;
   setMenu: (menu: MenuItem | null) => void;
   goToStep: (step: CashierStep) => void;
   resetCashierFlow: () => void;
   submitTransaction: () => Promise<boolean>;
-  
+
   dbInitialized: boolean;
   triggerDbReSeed: () => Promise<void>;
 }
@@ -35,150 +44,324 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isOffline, setIsOffline] = useState<boolean>(false);
-  const [dbInitialized, setDbInitialized] = useState<boolean>(false);
-  
-  // Cashier Registration Flow State
+  const [authLoading, setAuthLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState<boolean>(!navigator.onLine);
+  const [dbInitialized] = useState<boolean>(true);
+
   const [cashierStep, setCashierStep] = useState<CashierStep>(1);
   const [selectedEmployee, setSelectedEmployeeState] = useState<Employee | null>(null);
   const [selectedSession, setSelectedSessionState] = useState<'Breakfast' | 'Lunch' | 'Dinner' | null>(null);
   const [selectedMenu, setSelectedMenuState] = useState<MenuItem | null>(null);
   const [lastTransactionId, setLastTransactionId] = useState<string | null>(null);
 
-  // Initialize DB and Auth Session
-  useEffect(() => {
-    const init = async () => {
-      try {
-        await seedDatabase();
-        setDbInitialized(true);
-        
-        // Restore user session if any
-        const savedUser = localStorage.getItem('cafeteria_user');
-        if (savedUser) {
-          setCurrentUser(JSON.parse(savedUser));
-        }
-      } catch (err) {
-        console.error('Failed to initialize database:', err);
-      }
-    };
-    init();
+  const resetCashierFlow = useCallback(() => {
+    setSelectedEmployeeState(null);
+    setSelectedSessionState(null);
+    setSelectedMenuState(null);
+    setLastTransactionId(null);
+    setCashierStep(1);
   }, []);
 
-  const triggerDbReSeed = async () => {
-    setDbInitialized(false);
-    await db.delete();
-    await db.open();
-    await seedDatabase();
-    setDbInitialized(true);
-    toast.success('Database reset and re-seeded successfully!');
-  };
-
-  // Login
-  const login = async (username: string, role: 'Admin' | 'Cashier' | 'Super Admin'): Promise<boolean> => {
+  /**
+   * Synchronize IndexedDB offline queue with backend
+   * Validates and formats transactions before sending
+   */
+  const syncOfflineTransactions = useCallback(async () => {
     try {
-      const user = await db.users.get(username);
-      if (user && user.status === 'Active') {
-        const updatedUser = { ...user, lastLogin: new Date().toLocaleString() };
-        await db.users.put(updatedUser);
-        setCurrentUser(updatedUser);
-        localStorage.setItem('cafeteria_user', JSON.stringify(updatedUser));
-        
-        // Log action
-        await db.auditLogs.add({
-          timestamp: new Date(),
-          user: username,
-          action: 'Login',
-          entity: 'User',
-          entityId: username,
-          details: JSON.stringify({ role })
-        });
-        
-        return true;
+      // Get all queued transactions
+      const queued = await offlineDb.queuedTransactions.toArray();
+
+      if (queued.length === 0) {
+        console.log('No offline transactions to sync');
+        return;
       }
-      return false;
+
+      console.log(`Found ${queued.length} offline transactions to sync`);
+
+      // ✅ Map fields back to match backend payload schema expectations ('localId' and 'mealSession')
+      const transactions = queued.map(t => {
+        // Ensure menuItemId is a string (UUID format)
+        const menuItemId = t.menuItemId ? String(t.menuItemId) : '';
+        
+        // Validate required fields
+        if (!t.employeeId || !t.mealSession || !menuItemId) {
+          console.warn('Skipping invalid transaction:', t);
+          return null;
+        }
+
+        return {
+          localId: t.localId,
+          employeeId: t.employeeId,
+          mealSession: t.mealSession,
+          menuItemId: menuItemId,
+          offlineAt: t.offlineAt,
+        };
+      }).filter(Boolean); // Remove null entries
+
+      if (transactions.length === 0) {
+        // Clear invalid transactions
+        await offlineDb.queuedTransactions.clear();
+        toast.error('No valid transactions to sync. Cleared invalid entries.');
+        return;
+      }
+
+      const syncPayload = { transactions };
+
+      console.log('Sending sync payload:', JSON.stringify(syncPayload, null, 2));
+
+      toast.loading(`Syncing ${transactions.length} transactions...`, { id: 'sync-toast' });
+
+      const response = await axiosInstance.post('/api/sync/offline-batch', syncPayload);
+
+      console.log('Sync response:', response.data);
+
+      if (response.data?.success) {
+        // Clear all synced transactions from queue
+        await offlineDb.queuedTransactions.clear();
+        toast.success(`Sync complete. ${transactions.length} transactions uploaded!`, { id: 'sync-toast' });
+        console.log('Cleared queued transactions');
+      } else {
+        toast.error('Offline sync failed on server.', { id: 'sync-toast' });
+      }
+    } catch (e: any) {
+      console.error('Error during offline sync:', e);
+      
+      // Log the error response for debugging
+      if (e.response) {
+        console.error('Error response data:', e.response.data);
+        console.error('Error response status:', e.response.status);
+        
+        // Check if the error is about invalid data
+        if (e.response.status === 400) {
+          const errorMsg = e.response.data?.message || 'Invalid transaction data';
+          toast.error(`Sync failed: ${errorMsg}`, { id: 'sync-toast' });
+          
+          // Try to clean up invalid transactions
+          try {
+            const queued = await offlineDb.queuedTransactions.toArray();
+            // If there are transactions with invalid menuItemId (numbers instead of UUIDs)
+            const invalidTxns = queued.filter(t => {
+              const id = String(t.menuItemId || '');
+              // Check if it's a number (like "2") or a short ID
+              return id.length < 10 || /^\d+$/.test(id);
+            });
+            
+            if (invalidTxns.length > 0) {
+              console.warn('Found invalid transactions to remove:', invalidTxns);
+              
+              // Bulk delete only the specific invalid records using their localIds
+              const invalidLocalIds = invalidTxns.map(t => t.localId);
+              await offlineDb.queuedTransactions.bulkDelete(invalidLocalIds);
+              
+              toast.error(`Cleared ${invalidTxns.length} invalid transaction(s). Please try again.`, { id: 'sync-toast' });
+            }
+          } catch (cleanupError) {
+            console.error('Failed to clean up invalid transactions:', cleanupError);
+          }
+        } else if (e.response.status === 401) {
+          toast.error('Authentication failed. Please log in again.', { id: 'sync-toast' });
+        } else if (e.response.status === 403) {
+          toast.error('Permission denied. You cannot sync transactions.', { id: 'sync-toast' });
+        } else {
+          toast.error(`Server error: ${e.response.status}`, { id: 'sync-toast' });
+        }
+      } else if (e.message?.includes('Network Error') || e.code === 'ERR_NETWORK') {
+        toast.error('Network error. Will retry when connection is stable.', { id: 'sync-toast' });
+      } else {
+        toast.error('Sync failed. System will retry later.', { id: 'sync-toast' });
+      }
+    }
+  }, []);
+
+  /**
+   * Handle Online/Offline Status automatically
+   */
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log('Internet connection restored!');
+      setIsOffline(false);
+      toast.success('Internet connection restored! Syncing queued data...', { icon: '🌐' });
+      
+      // Call sync with a small delay to ensure connection is fully established
+      setTimeout(() => {
+        syncOfflineTransactions();
+      }, 1000);
+    };
+
+    const handleOffline = () => {
+      console.log('Internet connection lost!');
+      setIsOffline(true);
+      toast('Offline mode active. System will queue registrations locally.', {
+        icon: '⚠️',
+        style: { border: '1px solid #DC2626', color: '#DC2626' },
+      });
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [syncOfflineTransactions]);
+
+  /**
+   * Check for pending transactions on mount and periodically
+   */
+  useEffect(() => {
+    const checkPendingTransactions = async () => {
+      if (!isOffline) {
+        const queued = await offlineDb.queuedTransactions.toArray();
+        if (queued.length > 0) {
+          console.log(`Found ${queued.length} pending transactions, syncing...`);
+          await syncOfflineTransactions();
+        }
+      }
+    };
+    
+    // Check immediately when the app loads or when coming online
+    checkPendingTransactions();
+    
+    // Also check every 30 seconds
+    const interval = setInterval(checkPendingTransactions, 30000);
+    return () => clearInterval(interval);
+  }, [isOffline, syncOfflineTransactions]);
+
+  // Fetch Current User Profile on load
+  useEffect(() => {
+    const initAuth = async () => {
+      if (getAccessToken()) {
+        try {
+          const res = await axiosInstance.get('/api/auth/me');
+          if (res.data && res.data.success && res.data.data.user) {
+            const apiUser = res.data.data.user;
+            setCurrentUser({
+              id: apiUser.id,
+              email: apiUser.email,
+              role: apiUser.role === 'ADMIN' ? 'Admin' : apiUser.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Cashier',
+              status: apiUser.status === 'ACTIVE' ? 'Active' : apiUser.status === 'PENDING' ? 'Pending' : 'Inactive',
+              createdAt: apiUser.createdAt,
+              lastLogin: apiUser.lastLogin,
+            } as any);
+            if (navigator.onLine) {
+              cacheEmployeesOffline();
+            }
+          } else {
+            clearTokens();
+          }
+        } catch {
+          clearTokens();
+        }
+      }
+      setAuthLoading(false);
+    };
+
+    initAuth();
+  }, []);
+
+  // Cache Employees in IndexedDB
+  const cacheEmployeesOffline = async () => {
+    try {
+      const res = await axiosInstance.get('/api/employees?limit=200');
+      if (res.data?.success && res.data?.data?.employees) {
+        const list: OfflineEmployee[] = res.data.data.employees.map((emp: any) => ({
+          id: emp.id,
+          employeeNumber: emp.employeeNumber,
+          fullName: emp.fullName,
+          status: emp.status,
+          photo: emp.photo,
+          fingerprintId: emp.fingerprintId || null,
+        }));
+        await offlineDb.offlineEmployees.clear();
+        await offlineDb.offlineEmployees.bulkPut(list);
+      }
     } catch (e) {
-      console.error(e);
-      return false;
+      console.warn('Failed to pre-cache employees for offline support:', e);
     }
   };
 
-  // Logout
-  const logout = () => {
-    if (currentUser) {
-      db.auditLogs.add({
-        timestamp: new Date(),
-        user: currentUser.username,
-        action: 'Logout',
-        entity: 'User',
-        entityId: currentUser.username,
-        details: '{}'
-      }).catch(console.error);
+  const login = async (
+    email: string,
+    password: string,
+    rememberMe = true
+  ): Promise<LoginResult> => {
+    try {
+      const res = await axiosInstance.post('/api/auth/login', { email, password });
+      if (res.data?.success && res.data?.data) {
+        const { user: apiUser, accessToken, refreshToken } = res.data.data;
+        if (apiUser.status !== 'ACTIVE') {
+          return { success: false, error: 'User account is inactive.' };
+        }
+
+        setTokens(accessToken, refreshToken, rememberMe);
+
+        const role = apiUser.role === 'ADMIN' ? 'Admin' : apiUser.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Cashier';
+
+        const mappedUser: User = {
+          id: apiUser.id,
+          email: apiUser.email,
+          role: role as any,
+          status: apiUser.status === 'ACTIVE' ? 'Active' : apiUser.status === 'PENDING' ? 'Pending' : 'Inactive',
+          createdAt: apiUser.createdAt,
+          lastLogin: apiUser.lastLogin,
+        } as any;
+
+        setCurrentUser(mappedUser);
+
+        cacheEmployeesOffline();
+
+        let path = '/cashier';
+        if (role === 'Admin') path = '/admin';
+        else if (role === 'Super Admin') path = '/super-admin';
+
+        return { success: true, redirectTo: path };
+      }
+      return { success: false, error: 'Invalid server response structure.' };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.message || error.message };
     }
-    setCurrentUser(null);
-    localStorage.removeItem('cafeteria_user');
-    resetCashierFlow();
   };
 
-  // Offline Simulator Toggle
+  const logout = async () => {
+    try {
+      await axiosInstance.post('/api/auth/logout');
+    } catch (e) {
+      console.warn('Logout request failed:', e);
+    } finally {
+      clearTokens();
+      setCurrentUser(null);
+      resetCashierFlow();
+    }
+  };
+
+  const logoutAll = async () => {
+    try {
+      await axiosInstance.post('/api/auth/logout-all');
+    } catch (e) {
+      console.warn('Logout all request failed:', e);
+    } finally {
+      clearTokens();
+      setCurrentUser(null);
+      resetCashierFlow();
+    }
+  };
+
   const setOfflineMode = (offline: boolean) => {
     setIsOffline(offline);
     if (offline) {
-      toast('Offline Mode Activated. Transactions will queue in browser storage.', {
+      toast('Simulating Offline Mode. Transactions will queue in local storage.', {
         icon: '⚠️',
-        style: {
-          border: '1px solid #DC2626',
-          padding: '16px',
-          color: '#DC2626',
-          backgroundColor: '#FFF'
-        }
+        style: { border: '1px solid #DC2626', color: '#DC2626' },
       });
     } else {
       toast('Simulating reconnection...', { icon: '🔄' });
-      // Trigger sync
       setTimeout(() => {
         syncOfflineTransactions();
       }, 1000);
     }
   };
 
-  // Sync Offline Transactions
-  const syncOfflineTransactions = async () => {
-    try {
-      const unsyncedFiltered = await db.transactions.filter(t => !t.isSynced).toArray();
-      
-      if (unsyncedFiltered.length > 0) {
-        toast.loading(`Back online. Syncing ${unsyncedFiltered.length} transactions...`, { id: 'sync-toast' });
-        
-        // Simulate background sync API call delay
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        for (const txn of unsyncedFiltered) {
-          if (txn.id) {
-            await db.transactions.update(txn.id, { isSynced: true });
-            
-            // Add audit log
-            await db.auditLogs.add({
-              timestamp: new Date(),
-              user: currentUser?.username || 'system',
-              action: 'Sync Transaction',
-              entity: 'Transaction',
-              entityId: txn.id,
-              details: JSON.stringify({ employeeId: txn.employeeId, total: txn.price })
-            });
-          }
-        }
-        
-        toast.success(`Sync complete. ${unsyncedFiltered.length} transactions uploaded!`, { id: 'sync-toast' });
-      } else {
-        toast.success('Connection restored. System is online.', { id: 'sync-toast' });
-      }
-    } catch (e) {
-      console.error('Error syncing:', e);
-      toast.error('Sync failed. Will retry later.');
-    }
-  };
-
-  // Cashier State Helpers
   const setEmployee = (emp: Employee | null) => {
     setSelectedEmployeeState(emp);
   };
@@ -195,124 +378,102 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCashierStep(step);
   };
 
-  const resetCashierFlow = () => {
-    setSelectedEmployeeState(null);
-    setSelectedSessionState(null);
-    setSelectedMenuState(null);
-    setLastTransactionId(null);
-    setCashierStep(1);
-  };
-
-  // Submit Transaction (Step 4 -> Step 5)
   const submitTransaction = async (): Promise<boolean> => {
     if (!selectedEmployee || !selectedSession || !selectedMenu) {
       toast.error('Missing transaction details.');
       return false;
     }
 
-    try {
-      // 1. Double check session conflict for the day in the frontend DB (Business Rules)
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date();
-      endOfDay.setHours(23, 59, 59, 999);
-      
-      const existing = await db.transactions
-        .where('employeeId')
-        .equals(selectedEmployee.id)
-        .and(t => t.session === selectedSession && t.timestamp >= startOfDay && t.timestamp <= endOfDay)
-        .toArray();
+    const mealSessionMapped = selectedSession.toUpperCase() as 'BREAKFAST' | 'LUNCH' | 'DINNER';
 
-      if (existing.length > 0) {
-        toast.error(`Employee has already consumed ${selectedSession} today!`, {
-          duration: 4000,
-          style: { border: '1px solid #DC2626', color: '#DC2626' }
+    if (isOffline) {
+      try {
+        const localId = `offline-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const menuItemId = selectedMenu.id;
+        
+        console.log('Saving offline transaction:', {
+          localId,
+          employeeId: selectedEmployee.id,
+          mealSession: mealSessionMapped,
+          menuItemId: menuItemId,
+          menuName: selectedMenu.name,
         });
+
+        await offlineDb.queuedTransactions.add({
+          localId,
+          employeeId: selectedEmployee.id,
+          mealSession: mealSessionMapped,
+          menuItemId: menuItemId,
+          fingerprintId: selectedEmployee.fingerprintId || null,
+          offlineAt: new Date().toISOString(),
+        });
+
+        setLastTransactionId(localId);
+        toast.success('Saved locally (Offline Mode)');
+        setCashierStep(5);
+        return true;
+      } catch (err: any) {
+        console.error('Failed to queue offline transaction:', err);
+        toast.error('Failed to queue offline transaction.');
         return false;
       }
+    } else {
+      try {
+        const res = await axiosInstance.post('/api/transactions', {
+          employeeId: selectedEmployee.id,
+          mealSession: mealSessionMapped,
+          menuItemId: selectedMenu.id,
+        });
 
-      // Get current split configuration
-      const currentConfig = await db.subsidyConfig.get('current');
-      const employeePercent = currentConfig ? currentConfig.employeePercent : 40;
-      const companyPercent = currentConfig ? currentConfig.companyPercent : 60;
-      
-      const empShare = parseFloat(((selectedMenu.price * employeePercent) / 100).toFixed(2));
-      const compShare = parseFloat(((selectedMenu.price * companyPercent) / 100).toFixed(2));
-
-      const txnId = `TXN-${Math.floor(10000 + Math.random() * 90000)}`;
-
-      const transaction: Transaction = {
-        id: txnId,
-        employeeId: selectedEmployee.id,
-        employeeName: selectedEmployee.name,
-        department: selectedEmployee.department,
-        session: selectedSession,
-        menuItemId: selectedMenu.id!,
-        menuItemName: selectedMenu.name,
-        price: selectedMenu.price,
-        employeeShare: empShare,
-        companyShare: compShare,
-        cashierName: currentUser?.username || 'cashier',
-        timestamp: new Date(),
-        status: 'Complete',
-        isSynced: !isOffline
-      };
-
-      await db.transactions.add(transaction);
-      setLastTransactionId(txnId);
-
-      // Create Audit Log
-      await db.auditLogs.add({
-        timestamp: new Date(),
-        user: currentUser?.username || 'cashier',
-        action: 'Create Transaction',
-        entity: 'Transaction',
-        entityId: txnId,
-        details: JSON.stringify({ 
-          employeeId: selectedEmployee.id, 
-          session: selectedSession,
-          price: selectedMenu.price,
-          offline: isOffline
-        })
-      });
-
-      if (isOffline) {
-        toast.success('Saved locally (Offline Mode)');
-      } else {
-        toast.success('Transaction recorded successfully!');
+        if (res.data?.success && res.data?.data) {
+          setLastTransactionId(res.data.data.transactionId);
+          toast.success('Transaction recorded successfully!');
+          setCashierStep(5);
+          return true;
+        }
+        return false;
+      } catch (error: any) {
+        console.error('Transaction error:', error);
+        if (error.response?.status === 409) {
+          toast.error('Employee has already consumed this meal session today');
+        } else {
+          toast.error('Failed to save transaction');
+        }
+        return false;
       }
-
-      setCashierStep(5);
-      return true;
-    } catch (e) {
-      console.error(e);
-      toast.error('Failed to submit transaction.');
-      return false;
     }
   };
 
+  const triggerDbReSeed = async () => {
+    toast.success('System caches initialized.');
+  };
+
   return (
-    <AppContext.Provider value={{
-      currentUser,
-      login,
-      logout,
-      isOffline,
-      setOfflineMode,
-      syncOfflineTransactions,
-      cashierStep,
-      selectedEmployee,
-      selectedSession,
-      selectedMenu,
-      lastTransactionId,
-      setEmployee,
-      setSession,
-      setMenu,
-      goToStep,
-      resetCashierFlow,
-      submitTransaction,
-      dbInitialized,
-      triggerDbReSeed
-    }}>
+    <AppContext.Provider
+      value={{
+        currentUser,
+        authLoading,
+        login,
+        logout,
+        logoutAll,
+        isOffline,
+        setOfflineMode,
+        syncOfflineTransactions,
+        cashierStep,
+        selectedEmployee,
+        selectedSession,
+        selectedMenu,
+        lastTransactionId,
+        setEmployee,
+        setSession,
+        setMenu,
+        goToStep,
+        resetCashierFlow,
+        submitTransaction,
+        dbInitialized,
+        triggerDbReSeed,
+      }}
+    >
       {children}
     </AppContext.Provider>
   );
