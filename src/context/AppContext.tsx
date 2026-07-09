@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axiosInstance from '../client/axios';
 import { offlineDb, type OfflineEmployee } from '../db/indexedDb';
+import { db, initializeDatabase } from '../db/db'; // ✅ Import main database
 import toast from 'react-hot-toast';
 import { clearTokens, getAccessToken, setTokens } from '../lib/auth/tokenStorage';
 import type { Employee, MenuItem, User } from '../types/api';
 
-export type CashierStep = 1 | 2 | 3 | 4 | 5;
+export type CashierStep = 1 | 2 | 3 | 4 | 5 | 6;
 
 interface LoginResult {
   success: boolean;
@@ -46,7 +47,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isOffline, setIsOffline] = useState<boolean>(!navigator.onLine);
-  const [dbInitialized] = useState<boolean>(true);
+  const [dbInitialized, setDbInitialized] = useState<boolean>(false); // ✅ Changed to track actual initialization
 
   const [cashierStep, setCashierStep] = useState<CashierStep>(1);
   const [selectedEmployee, setSelectedEmployeeState] = useState<Employee | null>(null);
@@ -54,6 +55,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedMenu, setSelectedMenuState] = useState<MenuItem | null>(null);
   const [lastTransactionId, setLastTransactionId] = useState<string | null>(null);
 
+  // ✅ Add database initialization
+  useEffect(() => {
+    const initDatabases = async () => {
+      try {
+        console.log('🔄 Initializing databases...');
+        
+        // Initialize main database with error handling
+        try {
+          await initializeDatabase();
+          console.log('✅ Main database initialized');
+        } catch (error: any) {
+          console.warn('Main database initialization error:', error);
+          
+          if (error.name === 'DatabaseClosedError' || 
+              error.message?.includes('UpgradeError') ||
+              error.message?.includes('changing primary key')) {
+            console.log('⚠️ Schema mismatch detected, resetting main database...');
+            await indexedDB.deleteDatabase('CafeteriaDatabase');
+            await db.open();
+            console.log('✅ Main database recreated');
+          } else {
+            throw error;
+          }
+        }
+        
+        // Initialize offline database with error handling
+        try {
+          await offlineDb.open();
+          console.log('✅ Offline database initialized');
+        } catch (error: any) {
+          console.warn('Offline database initialization error:', error);
+          
+          if (error.name === 'DatabaseClosedError' || 
+              error.message?.includes('UpgradeError') ||
+              error.message?.includes('changing primary key')) {
+            console.log('⚠️ Schema mismatch detected, resetting offline database...');
+            await indexedDB.deleteDatabase('CafeteriaOfflineDatabase');
+            await offlineDb.open();
+            console.log('✅ Offline database recreated');
+          } else {
+            // Non-critical error, offline features might not work but app can continue
+            console.error('Offline database error (non-critical):', error);
+          }
+        }
+        
+        setDbInitialized(true);
+        console.log('✅ All databases ready');
+        
+      } catch (error) {
+        console.error('❌ Critical database initialization failed:', error);
+        
+        // Show user-friendly error
+        toast.error(
+          'Database initialization failed. Please clear your browser data and refresh.',
+          { duration: 6000 }
+        );
+        
+        // Attempt emergency reset
+        try {
+          await indexedDB.deleteDatabase('CafeteriaDatabase');
+          await indexedDB.deleteDatabase('CafeteriaOfflineDatabase');
+          console.log('🔄 Emergency reset performed, reloading...');
+          setTimeout(() => window.location.reload(), 2000);
+        } catch (resetError) {
+          console.error('Failed to perform emergency reset:', resetError);
+        }
+      }
+    };
+
+    initDatabases();
+  }, []);
+
+  // ✅ Your existing code continues below...
+  
   const resetCashierFlow = useCallback(() => {
     setSelectedEmployeeState(null);
     setSelectedSessionState(null);
@@ -211,7 +286,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
    */
   useEffect(() => {
     const checkPendingTransactions = async () => {
-      if (!isOffline) {
+      if (!isOffline && dbInitialized) { // ✅ Only check when DB is initialized
         const queued = await offlineDb.queuedTransactions.toArray();
         if (queued.length > 0) {
           console.log(`Found ${queued.length} pending transactions, syncing...`);
@@ -226,7 +301,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Also check every 30 seconds
     const interval = setInterval(checkPendingTransactions, 30000);
     return () => clearInterval(interval);
-  }, [isOffline, syncOfflineTransactions]);
+  }, [isOffline, syncOfflineTransactions, dbInitialized]); // ✅ Added dbInitialized dependency
 
   // Fetch Current User Profile on load
   useEffect(() => {
@@ -281,6 +356,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // ✅ Rest of your code remains exactly the same...
   const login = async (
     email: string,
     password: string,
@@ -445,7 +521,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const triggerDbReSeed = async () => {
-    toast.success('System caches initialized.');
+    try {
+      await indexedDB.deleteDatabase('CafeteriaDatabase');
+      await indexedDB.deleteDatabase('CafeteriaOfflineDatabase');
+      toast.success('Databases reset. Reloading...');
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (error) {
+      toast.error('Failed to reset databases');
+    }
   };
 
   return (
