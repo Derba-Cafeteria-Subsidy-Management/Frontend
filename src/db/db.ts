@@ -5,8 +5,8 @@ import Dexie, { type Table } from 'dexie';
 // ============================================================================
 
 export interface Employee {
-  id: string; // UUID from backend
-  employeeNumber: string; // EMP-00123
+  id: string;
+  employeeNumber: string;
   fullName: string;
   status: 'ACTIVE' | 'INACTIVE';
   photo: string | null;
@@ -20,7 +20,7 @@ export interface Employee {
 }
 
 export interface MenuItem {
-  id: string; // UUID from backend (stored as string)
+  id: string;
   name: string;
   description?: string;
   price: number;
@@ -30,12 +30,12 @@ export interface MenuItem {
 }
 
 export interface Transaction {
-  id: string; // TXN-xxxxx or offline-{timestamp}
+  id: string;
   employeeId: string;
   employeeNumber?: string;
   employeeName: string;
   session: 'Breakfast' | 'Lunch' | 'Dinner';
-  menuItemId: string; // ✅ Changed to string to support UUIDs
+  menuItemId: string;
   menuItemName: string;
   price: number;
   employeeShare: number;
@@ -43,7 +43,7 @@ export interface Transaction {
   cashierName: string;
   timestamp: Date;
   status: 'Complete' | 'Corrected';
-  isSynced: boolean; // For offline mode
+  isSynced: boolean;
   createdAt?: string;
 }
 
@@ -54,7 +54,7 @@ export interface CorrectionRequest {
   session: 'Breakfast' | 'Lunch' | 'Dinner';
   originalItemName: string;
   originalPrice: number;
-  requestedItemId: string; // ✅ Changed to string to support UUIDs
+  requestedItemId: string;
   requestedItemName: string;
   requestedPrice: number;
   reason: string;
@@ -71,7 +71,7 @@ export interface AuditLog {
   action: string;
   entity: string;
   entityId: string;
-  details: string; // JSON string
+  details: string;
 }
 
 export interface SubsidyConfig {
@@ -102,7 +102,7 @@ export interface User {
 
 class CafeteriaDatabase extends Dexie {
   employees!: Table<Employee, string>;
-  menuItems!: Table<MenuItem, string>; // ✅ Changed from number to string for UUID support
+  menuItems!: Table<MenuItem, string>;
   transactions!: Table<Transaction, string>;
   correctionRequests!: Table<CorrectionRequest, string>;
   auditLogs!: Table<AuditLog, number>;
@@ -112,9 +112,10 @@ class CafeteriaDatabase extends Dexie {
   constructor() {
     super('CafeteriaDatabase');
 
+    // Version 1 - Original schema (kept for backward compatibility)
     this.version(1).stores({
       employees: 'id, employeeNumber, fullName, status, fingerprintId',
-      menuItems: 'id, name, description, price, isActive, effectiveDate, mealtype', // ✅ Using string ID
+      menuItems: 'id, name, description, price, isActive, effectiveDate, mealtype',
       transactions: 'id, employeeId, employeeName, session, timestamp, status, isSynced',
       correctionRequests: 'id, transactionId, employeeName, session, status, cashierName, timestamp',
       auditLogs: '++id, timestamp, user, action, entity',
@@ -122,17 +123,61 @@ class CafeteriaDatabase extends Dexie {
       users: 'id, username, email, role, status, createdAt',
     });
   }
+
+  /**
+   * Reset database in case of schema conflicts
+   */
+  async resetDatabase() {
+    try {
+      await this.delete();
+      await this.open();
+      console.log('✅ Database reset successfully');
+      // Re-seed if needed
+      await seedDatabase();
+    } catch (error) {
+      console.error('Failed to reset database:', error);
+    }
+  }
 }
 
 export const db = new CafeteriaDatabase();
 
 // ============================================================================
+// DATABASE INITIALIZATION WITH ERROR HANDLING
+// ============================================================================
+
+export async function initializeDatabase() {
+  try {
+    await db.open();
+    console.log('✅ Main database ready');
+    return true;
+  } catch (error: any) {
+    console.error('❌ Database initialization failed:', error);
+    
+    // Check if it's a schema upgrade error
+    if (error.name === 'DatabaseClosedError' || 
+        error.message?.includes('UpgradeError') ||
+        error.message?.includes('changing primary key')) {
+      console.warn('⚠️ Schema mismatch detected, resetting database...');
+      
+      // Reset the database
+      await db.delete();
+      await db.open();
+      console.log('✅ Database reset and reinitialized');
+      
+      // Re-seed the database
+      await seedDatabase();
+      return true;
+    }
+    
+    return false;
+  }
+}
+
+// ============================================================================
 // SEED FUNCTIONS
 // ============================================================================
 
-/**
- * Helper to create a date relative to today
- */
 const getRelativeDate = (daysAgo: number, hours: number, minutes: number): Date => {
   const today = new Date();
   const d = new Date(today);
@@ -141,14 +186,11 @@ const getRelativeDate = (daysAgo: number, hours: number, minutes: number): Date 
   return d;
 };
 
-/**
- * Seed the database with initial data
- * Only runs if the database is empty
- */
 export async function seedDatabase() {
   const employeeCount = await db.employees.count();
   if (employeeCount > 0) {
-    return; // DB already seeded
+    console.log('📊 Database already contains data, skipping seed');
+    return;
   }
 
   console.log('🌱 Seeding database...');
@@ -189,7 +231,7 @@ export async function seedDatabase() {
   console.log(`  ✅ Seeded ${initialEmployees.length} employees`);
 
   // --------------------------------------------------------------------------
-  // 2. Seed Menu Items (with UUIDs matching backend)
+  // 2. Seed Menu Items
   // --------------------------------------------------------------------------
   const initialMenuItems: MenuItem[] = [
     // Breakfast
@@ -342,7 +384,7 @@ export async function seedDatabase() {
       session: 'Lunch',
       originalItemName: 'Special Beyaynetu',
       originalPrice: 120.00,
-      requestedItemId: '7d599131-da59-498e-8cbf-56578696d968', // UUID
+      requestedItemId: '7d599131-da59-498e-8cbf-56578696d968',
       requestedItemName: 'Beef Tibs',
       requestedPrice: 200.00,
       reason: 'Cashier selected Beyaynetu instead of Beef Tibs by mistake.',
@@ -357,7 +399,7 @@ export async function seedDatabase() {
       session: 'Dinner',
       originalItemName: 'Rice with Veggies',
       originalPrice: 95.00,
-      requestedItemId: '23973cc1-68ee-47ad-bcd5-5a621db67964', // UUID
+      requestedItemId: '23973cc1-68ee-47ad-bcd5-5a621db67964',
       requestedItemName: 'Tagliatelle Pasta',
       requestedPrice: 110.00,
       reason: 'Employee ordered Pasta, selected Rice on screen.',
