@@ -4,7 +4,13 @@ import { Clock, ChatCenteredText, X, Check, WarningCircle } from '@phosphor-icon
 import toast from 'react-hot-toast';
 import type { CorrectionRequest } from '../../types/api';
 
-interface PopulatedCorrectionRequest extends CorrectionRequest {
+// Extend the CorrectionRequest interface with optional fields
+interface PopulatedCorrectionRequest extends Partial<CorrectionRequest> {
+  id: string;
+  transactionId: string;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: string;
   cashierName?: string;
   employeeName?: string;
   session?: string;
@@ -12,7 +18,7 @@ interface PopulatedCorrectionRequest extends CorrectionRequest {
   originalPrice?: number;
   requestedItemName?: string;
   requestedPrice?: number;
-  // ✅ Add fields from the actual API response
+  rejectionReason?: string;
   oldValue?: {
     menuPrice: number;
     menuItemId: string;
@@ -45,11 +51,10 @@ export const CorrectionAdjudication: React.FC = () => {
       const res = await axiosInstance.get('/api/corrections');
       if (res.data?.success && res.data?.data) {
         const raw = res.data.data;
-        // ✅ The API returns data.corrections array
         const list = Array.isArray(raw) ? raw : raw.corrections || raw.data || [];
         const normalised = list.map((req: any) => ({
           ...req,
-          // ✅ Use oldValue and newValue from the API response
+          // Use oldValue and newValue from the API response
           cashierName: req.cashierName ?? req.cashier?.email ?? 'Cashier',
           employeeName: req.employeeName ?? req.transaction?.employee?.fullName ?? req.transaction?.fullName ?? 'Employee',
           session: req.session ?? req.transaction?.mealSession ?? req.old_values?.mealSession ?? 'N/A',
@@ -60,6 +65,8 @@ export const CorrectionAdjudication: React.FC = () => {
           // Keep the original oldValue/newValue for reference
           oldValue: req.oldValue,
           newValue: req.newValue,
+          // Include rejectionReason if present
+          rejectionReason: req.rejectionReason || req.rejection_reason || undefined,
         }));
         setRequests(normalised);
       }
@@ -81,7 +88,6 @@ export const CorrectionAdjudication: React.FC = () => {
   const handleApprove = async (req: PopulatedCorrectionRequest) => {
     toast.loading('Processing approval...', { id: 'adj' });
     try {
-      // ✅ FIXED: Use POST instead of PATCH
       await axiosInstance.post(`/api/corrections/${req.id}/approve`);
       toast.success('Correction approved successfully!', { id: 'adj' });
       fetchRequests();
@@ -107,7 +113,6 @@ export const CorrectionAdjudication: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      // ✅ FIXED: Use POST with reason in the request body
       await axiosInstance.post(`/api/corrections/${rejectReq.id}/reject`, {
         reason: rejectionReason.trim()
       });
@@ -165,7 +170,7 @@ export const CorrectionAdjudication: React.FC = () => {
                     <div className="flex items-start justify-between flex-wrap gap-2 text-xs select-none">
                       <div>
                         <span className="font-mono text-brand-dark-green font-semibold bg-gray-50 px-2 py-0.5 rounded border border-gray-100 mr-2">
-                          {req.id}
+                          {req.id?.substring(0, 12)}...
                         </span>
                         <span className="text-brand-gray-neutral">
                           Submitted: <strong>{new Date(req.createdAt).toLocaleString()}</strong>
@@ -184,7 +189,7 @@ export const CorrectionAdjudication: React.FC = () => {
                       <div>
                         <span className="text-brand-gray-neutral text-xs block mb-1">Employee details</span>
                         <strong className="text-brand-dark-green block">{req.employeeName}</strong>
-                        <span className="text-brand-gray-neutral text-xs">Txn Reference: {req.transactionId}</span>
+                        <span className="text-brand-gray-neutral text-xs">Txn Reference: {req.transactionId?.substring(0, 12)}...</span>
                       </div>
                       <div className="flex items-center justify-between gap-6 flex-wrap md:flex-nowrap">
                         <div>
@@ -284,7 +289,7 @@ export const CorrectionAdjudication: React.FC = () => {
                             </span>
                           </td>
                           <td className="p-4 text-xs text-brand-gray-neutral max-w-[200px] truncate" title={req.rejectionReason || req.reason}>
-                            {req.status === 'REJECTED' ? `Reason: ${req.rejectionReason}` : `Notes: ${req.reason}`}
+                            {req.status === 'REJECTED' ? `Reason: ${req.rejectionReason || 'No reason provided'}` : `Notes: ${req.reason}`}
                           </td>
                         </tr>
                       ))}
