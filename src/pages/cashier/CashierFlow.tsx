@@ -52,8 +52,9 @@ interface PaginationState {
  * 1. Employee Identification (Manual ID or Fingerprint)
  * 2. Session Selection (Breakfast/Lunch/Dinner)
  * 3. Menu Item Selection (with search and pagination)
- * 4. Transaction Review and Submission
- * 5. Success Receipt
+ * 4. Drink Selection (Optional - can be skipped)
+ * 5. Transaction Review and Submission
+ * 6. Success Receipt
  */
 export const CashierFlow: React.FC = () => {
   // ==========================================================================
@@ -109,7 +110,7 @@ export const CashierFlow: React.FC = () => {
   });
 
   // ==========================================================================
-  // STEP 3: MENU SELECTION - Now shows ALL items
+  // STEP 3: MENU SELECTION
   // ==========================================================================
 
   const [allMenuItems, setAllMenuItems] = useState<MenuItem[]>([]);
@@ -126,13 +127,30 @@ export const CashierFlow: React.FC = () => {
   });
 
   // ==========================================================================
-  // STEP 4: SUBSIDY RATES
+  // STEP 4: DRINK SELECTION
+  // ==========================================================================
+
+  const [drinkItems, setDrinkItems] = useState<MenuItem[]>([]);
+  const [selectedDrink, setSelectedDrink] = useState<MenuItem | null>(null);
+  const [isLoadingDrinks, setIsLoadingDrinks] = useState(false);
+  const [drinkSearchTerm, setDrinkSearchTerm] = useState('');
+  const [filteredDrinks, setFilteredDrinks] = useState<MenuItem[]>([]);
+  const [displayedDrinks, setDisplayedDrinks] = useState<MenuItem[]>([]);
+  const [drinkPagination, setDrinkPagination] = useState<PaginationState>({
+    currentPage: 1,
+    itemsPerPage: 6,
+    totalItems: 0,
+    totalPages: 0,
+  });
+
+  // ==========================================================================
+  // STEP 5: SUBSIDY RATES
   // ==========================================================================
 
   const [subsidyRates, setSubsidyRates] = useState({ employee: 40, company: 60 });
 
   // ==========================================================================
-  // STEP 5: RECEIPT COUNTDOWN
+  // STEP 6: RECEIPT COUNTDOWN
   // ==========================================================================
 
   const [countdown, setCountdown] = useState(5);
@@ -141,7 +159,7 @@ export const CashierFlow: React.FC = () => {
   // UI SETTINGS
   // ==========================================================================
 
-  const [allowManualId, setAllowManualId] = useState(true);
+  const [allowManualId] = useState(true);
 
   // ==========================================================================
   // LIFECYCLE EFFECTS
@@ -149,7 +167,6 @@ export const CashierFlow: React.FC = () => {
 
   /**
    * Track component mount/unmount state
-   * Prevents memory leaks by avoiding state updates on unmounted components
    */
   useEffect(() => {
     isMountedRef.current = true;
@@ -164,15 +181,15 @@ export const CashierFlow: React.FC = () => {
   useEffect(() => {
     const savedSetting = localStorage.getItem('allow_manual_id');
     if (savedSetting !== null) {
-      setAllowManualId(savedSetting === 'true');
+      // setAllowManualId(savedSetting === 'true');
     }
   }, []);
 
   /**
-   * Fetch subsidy rates when reaching step 4
+   * Fetch subsidy rates when reaching step 5
    */
   useEffect(() => {
-    if (cashierStep === 4) {
+    if (cashierStep === 5) {
       axiosInstance
         .get('/api/subsidy')
         .then((res) => {
@@ -197,10 +214,9 @@ export const CashierFlow: React.FC = () => {
 
   /**
    * Countdown timer for success screen
-   * Automatically resets the flow when countdown reaches 0
    */
   useEffect(() => {
-    if (cashierStep === 5) {
+    if (cashierStep === 6) {
       setCountdown(5);
       timerRef.current = setInterval(() => {
         setCountdown((prev) => {
@@ -221,7 +237,7 @@ export const CashierFlow: React.FC = () => {
    * Reset flow when countdown reaches zero
    */
   useEffect(() => {
-    if (cashierStep === 5 && countdown === 0) {
+    if (cashierStep === 6 && countdown === 0) {
       resetCashierFlow();
     }
   }, [cashierStep, countdown, resetCashierFlow]);
@@ -232,7 +248,6 @@ export const CashierFlow: React.FC = () => {
 
   /**
    * Check employee sessions and update session status
-   * Determines which meal sessions are available for the current employee
    */
   const checkEmployeeSessions = (employee: Employee | null) => {
     if (!employee) {
@@ -387,12 +402,11 @@ export const CashierFlow: React.FC = () => {
   };
 
   // ==========================================================================
-  // STEP 3: MENU MANAGEMENT - Now shows ALL items
+  // STEP 3: MENU MANAGEMENT
   // ==========================================================================
 
   /**
    * Apply search filter to menu items
-   * Filters by name or description
    */
   const applyMenuSearch = (searchTerm: string, items: MenuItem[]) => {
     if (!searchTerm.trim()) {
@@ -411,7 +425,6 @@ export const CashierFlow: React.FC = () => {
 
   /**
    * Update paginated display of menu items
-   * Calculates which items to show based on current page and items per page
    */
   const updatePaginatedItems = (items: MenuItem[], currentPage: number, itemsPerPage: number) => {
     const startIndex = (currentPage - 1) * itemsPerPage;
@@ -454,8 +467,7 @@ export const CashierFlow: React.FC = () => {
   };
 
   /**
-   * Fetch ALL menu items - no filtering by session
-   * The session is only for the transaction, not for filtering the menu
+   * Fetch ALL menu items - excluding drinks
    */
   useEffect(() => {
     if (cashierStep === 3) {
@@ -466,7 +478,6 @@ export const CashierFlow: React.FC = () => {
         const pageSize = 50;
 
         try {
-          // Get first page to know total count
           const firstRes = await axiosInstance.get('/api/menus/active', {
             params: { page: currentPage, pageSize: pageSize },
           });
@@ -483,9 +494,6 @@ export const CashierFlow: React.FC = () => {
             const totalCount = pagination.totalCount || 0;
             const totalPages = pagination.totalPages || Math.ceil(totalCount / pageSize);
 
-            console.log(`Total menu items: ${totalCount}, pages: ${totalPages}`);
-
-            // Fetch remaining pages in parallel
             if (totalPages > 1) {
               const pagePromises = [];
               for (let page = 2; page <= totalPages; page++) {
@@ -507,17 +515,37 @@ export const CashierFlow: React.FC = () => {
               }
             }
 
-            console.log(`Total items fetched from API: ${allItems.length}`);
-
-            // ✅ Map the items to MenuItem format - NO filtering by session
-            const mappedItems = allItems.map((item: any) => ({
-              id: item.id,
-              name: item.name,
-              description: item.description || '',
-              mealtype: item.mealtype || item.mealType || '',
-              currentPrice: item.currentPrice || item.price || 0,
-              active: item.active !== undefined ? item.active : true,
-            }));
+            // Filter out drink items
+            const mappedItems = allItems
+              .map((item: any) => ({
+                id: item.id,
+                name: item.name,
+                description: item.description || '',
+                mealtype: item.mealtype || item.mealType || '',
+                currentPrice: item.currentPrice || item.price || 0,
+                active: item.active !== undefined ? item.active : true,
+              }))
+              .filter((item: MenuItem) => {
+                const lowerName = item.name.toLowerCase();
+                const lowerDesc = item.description?.toLowerCase() || '';
+                const lowerMealtype = item.mealtype?.toLowerCase() || '';
+                
+                // Exclude drink items
+                return !(
+                  lowerName.includes('drink') ||
+                  lowerName.includes('juice') ||
+                  lowerName.includes('soda') ||
+                  lowerName.includes('water') ||
+                  lowerName.includes('coffee') ||
+                  lowerName.includes('tea') ||
+                  lowerName.includes('milk') ||
+                  lowerName.includes('smoothie') ||
+                  lowerDesc.includes('drink') ||
+                  lowerDesc.includes('beverage') ||
+                  lowerMealtype === 'drink' ||
+                  lowerMealtype === 'beverage'
+                );
+              });
 
             if (!isMountedRef.current) return;
 
@@ -539,12 +567,170 @@ export const CashierFlow: React.FC = () => {
   }, [cashierStep]);
 
   // ==========================================================================
-  // STEP 4: TRANSACTION SUBMISSION
+  // STEP 4: DRINK SELECTION
+  // ==========================================================================
+
+  /**
+   * Fetch drink items from the menu
+   */
+  const fetchDrinkItems = async () => {
+    setIsLoadingDrinks(true);
+    let allDrinks: MenuItem[] = [];
+    let currentPage = 1;
+    const pageSize = 50;
+
+    try {
+      const firstRes = await axiosInstance.get('/api/menus/active', {
+        params: { page: currentPage, pageSize: pageSize },
+      });
+
+      if (!isMountedRef.current) return;
+
+      if (firstRes.data?.success && firstRes.data?.data) {
+        const responseData = firstRes.data.data;
+        const items = responseData.data || responseData.items || [];
+        const pagination = responseData.pagination || {};
+
+        allDrinks = [...items];
+
+        const totalCount = pagination.totalCount || 0;
+        const totalPages = pagination.totalPages || Math.ceil(totalCount / pageSize);
+
+        if (totalPages > 1) {
+          const pagePromises = [];
+          for (let page = 2; page <= totalPages; page++) {
+            pagePromises.push(
+              axiosInstance.get('/api/menus/active', {
+                params: { page: page, pageSize: pageSize },
+              })
+            );
+          }
+
+          const pageResults = await Promise.all(pagePromises);
+
+          for (const result of pageResults) {
+            if (result.data?.success && result.data?.data) {
+              const pageData = result.data.data;
+              const pageItems = pageData.data || pageData.items || [];
+              allDrinks = [...allDrinks, ...pageItems];
+            }
+          }
+        }
+
+        // Filter for drink items
+        const mappedDrinks = allDrinks
+          .map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            description: item.description || '',
+            mealtype: item.mealtype || item.mealType || '',
+            currentPrice: item.currentPrice || item.price || 0,
+            active: item.active !== undefined ? item.active : true,
+          }))
+          .filter((item: MenuItem) => {
+            const lowerName = item.name.toLowerCase();
+            const lowerDesc = item.description?.toLowerCase() || '';
+            const lowerMealtype = item.mealtype?.toLowerCase() || '';
+            
+            return (
+              lowerName.includes('drink') ||
+              lowerName.includes('juice') ||
+              lowerName.includes('soda') ||
+              lowerName.includes('water') ||
+              lowerName.includes('coffee') ||
+              lowerName.includes('tea') ||
+              lowerName.includes('milk') ||
+              lowerName.includes('smoothie') ||
+              lowerDesc.includes('drink') ||
+              lowerDesc.includes('beverage') ||
+              lowerMealtype === 'drink' ||
+              lowerMealtype === 'beverage'
+            );
+          });
+
+        if (!isMountedRef.current) return;
+
+        setDrinkItems(mappedDrinks);
+        setFilteredDrinks(mappedDrinks);
+        updateDrinkPaginatedItems(mappedDrinks, 1, drinkPagination.itemsPerPage);
+      }
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      console.error('Error fetching drink items:', error);
+      toast.error('Failed to load drink options');
+    }
+
+    if (!isMountedRef.current) return;
+    setIsLoadingDrinks(false);
+  };
+
+  /**
+   * Apply search filter to drink items
+   */
+  const applyDrinkSearch = (searchTerm: string, items: MenuItem[]) => {
+    if (!searchTerm.trim()) {
+      setFilteredDrinks(items);
+      return;
+    }
+
+    const searchLower = searchTerm.toLowerCase().trim();
+    const filtered = items.filter(
+      (item) =>
+        item.name.toLowerCase().includes(searchLower) ||
+        (item.description && item.description.toLowerCase().includes(searchLower))
+    );
+    setFilteredDrinks(filtered);
+    updateDrinkPaginatedItems(filtered, 1, drinkPagination.itemsPerPage);
+  };
+
+  /**
+   * Update paginated display of drink items
+   */
+  const updateDrinkPaginatedItems = (items: MenuItem[], currentPage: number, itemsPerPage: number) => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const paginatedItems = items.slice(startIndex, endIndex);
+    setDisplayedDrinks(paginatedItems);
+    setDrinkPagination((prev) => ({
+      ...prev,
+      currentPage,
+      totalItems: items.length,
+      totalPages: Math.ceil(items.length / itemsPerPage),
+    }));
+  };
+
+  /**
+   * Handle drink page change
+   */
+  const handleDrinkPageChange = (newPage: number) => {
+    if (newPage < 1 || newPage > drinkPagination.totalPages) return;
+    updateDrinkPaginatedItems(filteredDrinks, newPage, drinkPagination.itemsPerPage);
+  };
+
+  /**
+   * Handle drink search input change
+   */
+  const handleDrinkSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setDrinkSearchTerm(value);
+    applyDrinkSearch(value, drinkItems);
+  };
+
+  /**
+   * Load drinks when reaching step 4
+   */
+  useEffect(() => {
+    if (cashierStep === 4) {
+      fetchDrinkItems();
+    }
+  }, [cashierStep]);
+
+  // ==========================================================================
+  // STEP 5: TRANSACTION SUBMISSION
   // ==========================================================================
 
   /**
    * Submit transaction to backend
-   * Uses the selected session for the transaction
    */
   const handleSubmitTransaction = async () => {
     if (!selectedEmployee || !selectedSession || !selectedMenu) {
@@ -559,6 +745,7 @@ export const CashierFlow: React.FC = () => {
         employeeId: selectedEmployee.id,
         mealSession: mealSession,
         menuItemId: selectedMenu.id,
+        drinkItemId: selectedDrink?.id || null,
       };
 
       console.log('Submitting transaction:', transactionData);
@@ -570,7 +757,7 @@ export const CashierFlow: React.FC = () => {
       if (response.data?.success) {
         const transactionId = response.data.data?.transactionId || response.data.data?.id || 'TXN-UNKNOWN';
         toast.success(`Transaction successful! ID: ${transactionId}`);
-        goToStep(5);
+        goToStep(6);
       } else {
         toast.error('Failed to submit transaction');
       }
@@ -596,67 +783,10 @@ export const CashierFlow: React.FC = () => {
 
   /**
    * Handle new registration button click
-   * Resets the flow and clears any timers
    */
   const handleNewRegistration = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     resetCashierFlow();
-  };
-
-  /**
-   * Get status icon based on session status
-   */
-  const getStatusIcon = (status: SessionStatus) => {
-    switch (status) {
-      case 'Consumed':
-        return <XCircle size={20} className="text-brand-error-red" />;
-      case 'Locked':
-        return <Lock size={20} className="text-brand-warning" />;
-      case 'Available':
-      default:
-        return <Check size={20} className="text-brand-dark-green" />;
-    }
-  };
-
-  /**
-   * Get the appropriate icon for a meal session
-   */
-  const getSessionIcon = (sessionName: 'Breakfast' | 'Lunch' | 'Dinner', isDisabled: boolean) => {
-    const iconColor = isDisabled ? 'text-brand-gray-neutral' : 'text-brand-gold';
-    switch (sessionName) {
-      case 'Breakfast':
-        return <Coffee size={24} className={iconColor} />;
-      case 'Lunch':
-        return <Sun size={24} className={iconColor} />;
-      case 'Dinner':
-        return <Moon size={24} className={iconColor} />;
-      default:
-        return <Coffee size={24} className={iconColor} />;
-    }
-  };
-
-  /**
-   * Get session status message and styling
-   */
-  const getSessionStatusInfo = (status: SessionStatus) => {
-    switch (status) {
-      case 'Consumed':
-        return {
-          message: 'Already consumed today',
-          color: 'bg-brand-error-red/10 text-brand-error-red',
-        };
-      case 'Locked':
-        return {
-          message: 'Session is locked',
-          color: 'bg-brand-warning/10 text-brand-warning',
-        };
-      case 'Available':
-      default:
-        return {
-          message: 'Available for registration',
-          color: 'bg-brand-dark-green/10 text-brand-dark-green',
-        };
-    }
   };
 
   // ==========================================================================
@@ -873,7 +1003,10 @@ export const CashierFlow: React.FC = () => {
                 const isLocked = status === 'Locked';
                 const isDisabled = isConsumed || isLocked;
                 const isAvailable = status === 'Available';
-                const statusInfo = getSessionStatusInfo(status);
+                const statusInfo = {
+                  message: isConsumed ? 'Already consumed today' : isLocked ? 'Session is locked' : 'Available for registration',
+                  color: isConsumed ? 'bg-brand-error-red/10 text-brand-error-red' : isLocked ? 'bg-brand-warning/10 text-brand-warning' : 'bg-brand-dark-green/10 text-brand-dark-green',
+                };
 
                 return (
                   <button
@@ -895,12 +1028,14 @@ export const CashierFlow: React.FC = () => {
                   >
                     <div className="flex items-center gap-3">
                       <div className={isDisabled ? 'text-brand-gray-neutral' : 'text-brand-gold'}>
-                        {getSessionIcon(sessionName, isDisabled)}
+                        {sessionName === 'Breakfast' && <Coffee size={24} className={isDisabled ? 'text-brand-gray-neutral' : 'text-brand-gold'} />}
+                        {sessionName === 'Lunch' && <Sun size={24} className={isDisabled ? 'text-brand-gray-neutral' : 'text-brand-gold'} />}
+                        {sessionName === 'Dinner' && <Moon size={24} className={isDisabled ? 'text-brand-gray-neutral' : 'text-brand-gold'} />}
                       </div>
                       <div>
                         <span className="font-semibold text-sm block">{sessionName}</span>
                         <span className="text-[11px] text-brand-gray-neutral flex items-center gap-1">
-                          {getStatusIcon(status)}
+                          {isConsumed ? <XCircle size={20} className="text-brand-error-red" /> : isLocked ? <Lock size={20} className="text-brand-warning" /> : <Check size={20} className="text-brand-dark-green" />}
                           {statusInfo.message}
                         </span>
                       </div>
@@ -919,7 +1054,7 @@ export const CashierFlow: React.FC = () => {
   }
 
   // --------------------------------------------------------------------------
-  // STEP 3: MENU ITEM SELECTION - Shows ALL items, not filtered by session
+  // STEP 3: MENU ITEM SELECTION
   // --------------------------------------------------------------------------
   if (cashierStep === 3) {
     if (!selectedEmployee || !selectedSession) return null;
@@ -934,7 +1069,6 @@ export const CashierFlow: React.FC = () => {
           <div className="flex items-center gap-4 border-b border-gray-100 pb-4">
             <button
               onClick={() => {
-                setSession(null);
                 goToStep(2);
               }}
               className="text-brand-gray-neutral hover:text-brand-dark-green"
@@ -942,12 +1076,12 @@ export const CashierFlow: React.FC = () => {
               <ArrowLeft size={20} />
             </button>
             <div>
-              <h2 className="text-[18px] font-semibold text-brand-dark-green">Select Menu Item</h2>
+              <h2 className="text-[18px] font-semibold text-brand-dark-green">Select Main Meal</h2>
               <p className="text-brand-gray-neutral text-xs">
-                All menu options available
+                Choose your main menu item
               </p>
               <p className="text-[11px] text-brand-gray-neutral mt-1">
-                {totalItems} items available • Selected session: <strong className="text-brand-dark-green">{selectedSession}</strong>
+                {totalItems} items available • Session: <strong className="text-brand-dark-green">{selectedSession}</strong>
               </p>
             </div>
           </div>
@@ -967,7 +1101,7 @@ export const CashierFlow: React.FC = () => {
           {isLoadingMenu ? (
             <div className="space-y-3">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={`skeleton-${i}`} className="h-14 bg-gray-50 rounded animate-pulse" />
+                <div key={`menu-skeleton-${i}`} className="h-14 bg-gray-50 rounded animate-pulse" />
               ))}
             </div>
           ) : displayedMenuItems.length === 0 ? (
@@ -978,18 +1112,6 @@ export const CashierFlow: React.FC = () => {
               <p className="text-sm">
                 {menuSearchTerm ? 'No menu items match your search' : 'No menu items available'}
               </p>
-              {menuSearchTerm && (
-                <button
-                  onClick={() => {
-                    setMenuSearchTerm('');
-                    applyMenuSearch('', allMenuItems);
-                    updatePaginatedItems(allMenuItems, 1, menuPagination.itemsPerPage);
-                  }}
-                  className="text-brand-gold text-xs font-medium hover:underline mt-2"
-                >
-                  Clear search
-                </button>
-              )}
             </div>
           ) : (
             <>
@@ -1008,11 +1130,6 @@ export const CashierFlow: React.FC = () => {
                       <span className="text-[11px] text-brand-gray-neutral">
                         {item.description || 'Cafeteria Standard Option'}
                       </span>
-                      {item.mealtype && (
-                        <span className="text-[10px] text-brand-gray-neutral/60 block mt-0.5">
-                          {item.mealtype}
-                        </span>
-                      )}
                     </div>
                     <span className="font-bold text-sm text-brand-gold ml-4">
                       {(item.currentPrice || 0).toFixed(2)} ETB
@@ -1063,14 +1180,167 @@ export const CashierFlow: React.FC = () => {
   }
 
   // --------------------------------------------------------------------------
-  // STEP 4: REVIEW AND SUBMIT
+  // STEP 4: DRINK SELECTION
   // --------------------------------------------------------------------------
   if (cashierStep === 4) {
     if (!selectedEmployee || !selectedSession || !selectedMenu) return null;
 
+    const { currentPage, totalPages, itemsPerPage, totalItems } = drinkPagination;
+    const startIndex = (currentPage - 1) * itemsPerPage + 1;
+    const endIndex = Math.min(currentPage * itemsPerPage, totalItems);
+
+    return (
+      <div className="w-full max-w-[600px] mx-auto mt-4 select-none">
+        <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] shadow-[0_4px_16px_rgba(0,0,0,0.03)] p-8 space-y-6">
+          <div className="flex items-center gap-4 border-b border-gray-100 pb-4">
+            <button
+              onClick={() => {
+                setMenu(null);
+                goToStep(3);
+              }}
+              className="text-brand-gray-neutral hover:text-brand-dark-green"
+            >
+              <ArrowLeft size={20} />
+            </button>
+            <div>
+              <h2 className="text-[18px] font-semibold text-brand-dark-green">Select a Drink</h2>
+              <p className="text-brand-gray-neutral text-xs">
+                Choose a drink to accompany your meal <span className="text-brand-gray-neutral/60">(Optional)</span>
+              </p>
+              <p className="text-[11px] text-brand-gray-neutral mt-1">
+                Meal selected: <strong className="text-brand-dark-green">{selectedMenu.name}</strong>
+              </p>
+            </div>
+          </div>
+
+          {/* Search Input */}
+          <div className="relative">
+            <input
+              type="text"
+              value={drinkSearchTerm}
+              onChange={handleDrinkSearchChange}
+              placeholder="Search drinks..."
+              className="w-full h-[44px] pl-10 pr-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green placeholder-brand-gray-neutral/60"
+            />
+            <MagnifyingGlass size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-gray-neutral" />
+          </div>
+
+          {isLoadingDrinks ? (
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={`drink-skeleton-${i}`} className="h-14 bg-gray-50 rounded animate-pulse" />
+              ))}
+            </div>
+          ) : displayedDrinks.length === 0 ? (
+            <div className="text-center py-12 text-brand-gray-neutral">
+              <div className="flex justify-center mb-3">
+                <span className="text-6xl">🥤</span>
+              </div>
+              <p className="text-sm">
+                {drinkSearchTerm ? 'No drinks match your search' : 'No drink items available'}
+              </p>
+              <button
+                onClick={() => {
+                  setSelectedDrink(null);
+                  goToStep(5);
+                }}
+                className="mt-4 text-brand-gold font-medium text-sm hover:underline"
+              >
+                Skip drink selection
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-2.5 max-h-[400px] overflow-y-auto pr-1">
+                {displayedDrinks.map((drink) => (
+                  <button
+                    key={drink.id}
+                    onClick={() => {
+                      setSelectedDrink(drink);
+                      goToStep(5);
+                    }}
+                    className={`w-full p-4 border rounded-[8px] text-left flex justify-between items-center transition-all duration-200 ${
+                      selectedDrink?.id === drink.id
+                        ? 'border-brand-gold bg-brand-gold/5'
+                        : 'border-brand-light-green hover:border-brand-gold hover:bg-brand-light-green/5'
+                    }`}
+                  >
+                    <div className="flex-1">
+                      <span className="font-semibold text-sm block text-brand-dark-green">{drink.name}</span>
+                      <span className="text-[11px] text-brand-gray-neutral">
+                        {drink.description || 'Refreshing beverage'}
+                      </span>
+                    </div>
+                    <span className="font-bold text-sm text-brand-gold ml-4">
+                      {(drink.currentPrice || 0).toFixed(2)} ETB
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between border-t border-gray-100 pt-4 mt-2">
+                  <div className="text-xs text-brand-gray-neutral">
+                    Showing {startIndex} - {endIndex} of {totalItems}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleDrinkPageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      className={`p-2 rounded-[8px] border border-gray-300 transition ${
+                        currentPage === 1
+                          ? 'text-brand-gray-neutral/40 cursor-not-allowed'
+                          : 'text-brand-gray-neutral hover:border-brand-dark-green hover:text-brand-dark-green'
+                      }`}
+                    >
+                      <CaretLeft size={16} />
+                    </button>
+                    <span className="text-xs text-brand-dark-green font-medium px-2">
+                      {currentPage} / {totalPages}
+                    </span>
+                    <button
+                      onClick={() => handleDrinkPageChange(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                      className={`p-2 rounded-[8px] border border-gray-300 transition ${
+                        currentPage === totalPages
+                          ? 'text-brand-gray-neutral/40 cursor-not-allowed'
+                          : 'text-brand-gray-neutral hover:border-brand-dark-green hover:text-brand-dark-green'
+                      }`}
+                    >
+                      <CaretRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Skip button */}
+          <button
+            onClick={() => {
+              setSelectedDrink(null);
+              goToStep(5);
+            }}
+            className="w-full h-[44px] border border-dashed border-gray-300 text-brand-gray-neutral font-medium text-sm rounded-[8px] hover:bg-gray-50 transition"
+          >
+            Skip drink selection
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // STEP 5: REVIEW AND SUBMIT
+  // --------------------------------------------------------------------------
+  if (cashierStep === 5) {
+    if (!selectedEmployee || !selectedSession || !selectedMenu) return null;
+
     const basePrice = selectedMenu.currentPrice || 0;
-    const employeeShare = (basePrice * subsidyRates.employee) / 100;
-    const companyShare = (basePrice * subsidyRates.company) / 100;
+    const drinkPrice = selectedDrink?.currentPrice || 0;
+    const totalPrice = basePrice + drinkPrice;
+    const employeeShare = (totalPrice * subsidyRates.employee) / 100;
+    const companyShare = (totalPrice * subsidyRates.company) / 100;
 
     return (
       <div className="w-full max-w-[500px] mx-auto mt-4 select-none">
@@ -1078,8 +1348,8 @@ export const CashierFlow: React.FC = () => {
           <div className="flex items-center gap-4 border-b border-gray-100 pb-4">
             <button
               onClick={() => {
-                setMenu(null);
-                goToStep(3);
+                setSelectedDrink(null);
+                goToStep(4);
               }}
               className="text-brand-gray-neutral hover:text-brand-dark-green"
             >
@@ -1107,14 +1377,25 @@ export const CashierFlow: React.FC = () => {
               <span className="font-semibold uppercase">{selectedSession}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-brand-gray-neutral">Selected Item</span>
+              <span className="text-brand-gray-neutral">Selected Meal</span>
               <span className="font-semibold">{selectedMenu.name}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-brand-gray-neutral">Menu Base Price</span>
+              <span className="text-brand-gray-neutral">Meal Price</span>
               <span className="font-semibold">{basePrice.toFixed(2)} ETB</span>
             </div>
-
+            {selectedDrink && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-brand-gray-neutral">Drink</span>
+                  <span className="font-semibold">{selectedDrink.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-brand-gray-neutral">Drink Price</span>
+                  <span className="font-semibold">{drinkPrice.toFixed(2)} ETB</span>
+                </div>
+              </>
+            )}
             <div className="h-[1px] bg-brand-light-green/20 my-1" />
 
             <div className="flex justify-between text-brand-gold">
@@ -1130,7 +1411,7 @@ export const CashierFlow: React.FC = () => {
 
             <div className="flex justify-between text-sm font-bold pt-1">
               <span>Total Price</span>
-              <span>{basePrice.toFixed(2)} ETB</span>
+              <span>{totalPrice.toFixed(2)} ETB</span>
             </div>
           </div>
 
@@ -1154,13 +1435,15 @@ export const CashierFlow: React.FC = () => {
   }
 
   // --------------------------------------------------------------------------
-  // STEP 5: SUCCESS RECEIPT
+  // STEP 6: SUCCESS RECEIPT
   // --------------------------------------------------------------------------
-  if (cashierStep === 5) {
+  if (cashierStep === 6) {
     if (!selectedEmployee || !selectedSession || !selectedMenu) return null;
 
     const basePrice = selectedMenu.currentPrice || 0;
-    const employeeShare = (basePrice * subsidyRates.employee) / 100;
+    const drinkPrice = selectedDrink?.currentPrice || 0;
+    const totalPrice = basePrice + drinkPrice;
+    const employeeShare = (totalPrice * subsidyRates.employee) / 100;
 
     return (
       <div className="w-full max-w-[500px] mx-auto mt-4 select-none">
@@ -1187,9 +1470,15 @@ export const CashierFlow: React.FC = () => {
               <span className="text-brand-dark-green font-medium uppercase">{selectedSession}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-brand-gray-neutral">Item</span>
+              <span className="text-brand-gray-neutral">Meal</span>
               <span className="text-brand-dark-green font-medium">{selectedMenu.name}</span>
             </div>
+            {selectedDrink && (
+              <div className="flex justify-between">
+                <span className="text-brand-gray-neutral">Drink</span>
+                <span className="text-brand-dark-green font-medium">{selectedDrink.name}</span>
+              </div>
+            )}
             <div className="h-[1px] bg-brand-light-green/30 my-1" />
             <div className="flex justify-between text-base font-bold">
               <span className="text-brand-dark-green">Amount Charged</span>
