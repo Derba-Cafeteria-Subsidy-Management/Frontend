@@ -50,7 +50,7 @@ export const AdminDashboard: React.FC = () => {
   const [statsLoaded, setStatsLoaded] = useState(false);
 
   // Analytics state
-  const [viewMode, setViewMode] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [viewMode, setViewMode] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('daily');
   const [chartType, setChartType] = useState<'transactions' | 'revenue' | 'cost'>('transactions');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
@@ -58,7 +58,8 @@ export const AdminDashboard: React.FC = () => {
   const [availableYears] = useState<number[]>([
     new Date().getFullYear(),
     new Date().getFullYear() - 1,
-    new Date().getFullYear() - 2
+    new Date().getFullYear() - 2,
+    new Date().getFullYear() - 3
   ]);
 
   // Get month names
@@ -205,6 +206,7 @@ export const AdminDashboard: React.FC = () => {
     if (viewMode === 'daily') key += `_${selectedDate}`;
     else if (viewMode === 'weekly') key += `_${selectedDate}_${selectedYear}`;
     else if (viewMode === 'monthly') key += `_${selectedMonth}_${selectedYear}`;
+    else if (viewMode === 'yearly') key += `_${selectedYear}`;
     return key;
   }, [viewMode, selectedDate, selectedMonth, selectedYear]);
 
@@ -239,6 +241,8 @@ export const AdminDashboard: React.FC = () => {
       } else if (viewMode === 'monthly') {
         params.year = selectedYear;
         params.month = selectedMonth;
+      } else if (viewMode === 'yearly') {
+        params.year = selectedYear;
       }
 
       const res = await axiosInstance.get('/api/reports/analytics', { params });
@@ -246,8 +250,24 @@ export const AdminDashboard: React.FC = () => {
       let data;
       if (res.data?.success && res.data?.data) {
         data = res.data.data;
+        
+        // Map labels for yearly view - convert "M1", "M2", etc. to month names
+        let labels = data.labels || [];
+        if (viewMode === 'yearly' && labels.length > 0) {
+          const monthNamesFull = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          labels = labels.map((label: string) => {
+            // Check if label is in format "M1", "M2", etc.
+            const match = label.match(/^M(\d+)$/);
+            if (match) {
+              const monthIndex = parseInt(match[1]) - 1;
+              return monthNamesFull[monthIndex] || label;
+            }
+            return label;
+          });
+        }
+        
         const formattedData = {
-          labels: data.labels || [],
+          labels: labels,
           transactions: data.transactions || [],
           companyRevenue: data.companyRevenue || [],
           employeeCost: data.employeeCost || []
@@ -257,11 +277,14 @@ export const AdminDashboard: React.FC = () => {
         analyticsCache.current.set(cacheKey, formattedData);
       } else {
         // Fallback mock data
+        const mockLabels = viewMode === 'yearly' 
+          ? ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+          : ['BREAKFAST', 'LUNCH', 'DINNER'];
         const mockData = {
-          labels: ['BREAKFAST', 'LUNCH', 'DINNER'],
-          transactions: [Math.floor(Math.random() * 50) + 10, Math.floor(Math.random() * 80) + 20, Math.floor(Math.random() * 40) + 10],
-          companyRevenue: [Math.random() * 100 + 50, Math.random() * 200 + 100, Math.random() * 150 + 50],
-          employeeCost: [Math.random() * 80 + 30, Math.random() * 150 + 50, Math.random() * 100 + 30]
+          labels: mockLabels,
+          transactions: Array(mockLabels.length).fill(0).map(() => Math.floor(Math.random() * 50) + 10),
+          companyRevenue: Array(mockLabels.length).fill(0).map(() => Math.random() * 100 + 50),
+          employeeCost: Array(mockLabels.length).fill(0).map(() => Math.random() * 80 + 30)
         };
         setAnalyticsData(mockData);
         analyticsCache.current.set(cacheKey, mockData);
@@ -269,11 +292,14 @@ export const AdminDashboard: React.FC = () => {
     } catch (error) {
       console.error('Error fetching analytics:', error);
       // Fallback mock data
+      const mockLabels = viewMode === 'yearly' 
+        ? ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        : ['BREAKFAST', 'LUNCH', 'DINNER'];
       const mockData = {
-        labels: ['BREAKFAST', 'LUNCH', 'DINNER'],
-        transactions: [Math.floor(Math.random() * 50) + 10, Math.floor(Math.random() * 80) + 20, Math.floor(Math.random() * 40) + 10],
-        companyRevenue: [Math.random() * 100 + 50, Math.random() * 200 + 100, Math.random() * 150 + 50],
-        employeeCost: [Math.random() * 80 + 30, Math.random() * 150 + 50, Math.random() * 100 + 30]
+        labels: mockLabels,
+        transactions: Array(mockLabels.length).fill(0).map(() => Math.floor(Math.random() * 50) + 10),
+        companyRevenue: Array(mockLabels.length).fill(0).map(() => Math.random() * 100 + 50),
+        employeeCost: Array(mockLabels.length).fill(0).map(() => Math.random() * 80 + 30)
       };
       setAnalyticsData(mockData);
       analyticsCache.current.set(cacheKey, mockData);
@@ -323,9 +349,8 @@ export const AdminDashboard: React.FC = () => {
     setSelectedMonth(month);
   };
 
-  const handleViewModeChange = (mode: 'daily' | 'weekly' | 'monthly') => {
+  const handleViewModeChange = (mode: 'daily' | 'weekly' | 'monthly' | 'yearly') => {
     setViewMode(mode);
-    // Reset cache key will be generated automatically
   };
 
   // Format currency in Birr
@@ -342,6 +367,8 @@ export const AdminDashboard: React.FC = () => {
         return `Weekly Analytics - Week of ${selectedDate}`;
       case 'monthly':
         return `Monthly Analytics - ${monthNames[selectedMonth - 1]} ${selectedYear}`;
+      case 'yearly':
+        return `Yearly Analytics - ${selectedYear}`;
       default:
         return 'Analytics';
     }
@@ -376,7 +403,7 @@ export const AdminDashboard: React.FC = () => {
           `rgba(46, 125, 50, 0.8)`,
           `rgba(46, 125, 50, 0.6)`
         ],
-        label: 'Revenue',
+        label: 'Company Revenue',
         data: analyticsData.companyRevenue,
         format: (value: number) => formatCurrency(value)
       },
@@ -391,7 +418,7 @@ export const AdminDashboard: React.FC = () => {
           `rgba(212, 175, 55, 0.8)`,
           `rgba(212, 175, 55, 0.6)`
         ],
-        label: 'Employee Cost',
+        label: 'Total Cost',
         data: analyticsData.employeeCost,
         format: (value: number) => formatCurrency(value)
       }
@@ -593,7 +620,7 @@ export const AdminDashboard: React.FC = () => {
             </h3>
           </div>
 
-          {/* View Mode Tabs - Only analytics data reloads, not stats */}
+          {/* View Mode Tabs */}
           <div className="flex items-center gap-2">
             <div className="flex rounded-[8px] overflow-hidden border border-brand-light-green">
               <button
@@ -626,53 +653,36 @@ export const AdminDashboard: React.FC = () => {
               >
                 Monthly
               </button>
+              <button
+                onClick={() => handleViewModeChange('yearly')}
+                className={`px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap ${
+                  viewMode === 'yearly'
+                    ? 'bg-brand-dark-green text-brand-white'
+                    : 'bg-brand-white text-brand-gray-neutral hover:bg-brand-light-green/10'
+                }`}
+              >
+                Yearly
+              </button>
             </div>
           </div>
         </div>
 
         {/* Analytics Filters */}
         <div className="flex flex-wrap items-center gap-4 mb-6">
-          <div className="flex items-center gap-2 bg-brand-white border border-brand-light-green rounded-[8px] px-3 py-1.5 focus-within:border-brand-gold transition-colors">
-            <Calendar size={20} className="text-brand-dark-green flex-shrink-0" />
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="bg-transparent text-sm text-brand-dark-green focus:outline-none w-full min-w-[140px]"
-              style={{ colorScheme: 'light' }}
-            />
-          </div>
-
-          {viewMode === 'monthly' && (
-            <>
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-brand-gray-neutral whitespace-nowrap font-medium">Month:</label>
-                <select
-                  value={selectedMonth}
-                  onChange={(e) => handleMonthChange(parseInt(e.target.value))}
-                  className="px-3 py-1.5 border border-brand-light-green rounded-[8px] text-sm text-brand-dark-green bg-brand-white focus:outline-none focus:border-brand-gold cursor-pointer transition-colors"
-                >
-                  {monthNames.map((month, index) => (
-                    <option key={index + 1} value={index + 1}>{month}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-brand-gray-neutral whitespace-nowrap font-medium">Year:</label>
-                <select
-                  value={selectedYear}
-                  onChange={(e) => handleYearChange(parseInt(e.target.value))}
-                  className="px-3 py-1.5 border border-brand-light-green rounded-[8px] text-sm text-brand-dark-green bg-brand-white focus:outline-none focus:border-brand-gold cursor-pointer transition-colors"
-                >
-                  {availableYears.map(year => (
-                    <option key={year} value={year}>{year}</option>
-                  ))}
-                </select>
-              </div>
-            </>
+          {viewMode !== 'yearly' && (
+            <div className="flex items-center gap-2 bg-brand-white border border-brand-light-green rounded-[8px] px-3 py-1.5 focus-within:border-brand-gold transition-colors">
+              <Calendar size={20} className="text-brand-dark-green flex-shrink-0" />
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="bg-transparent text-sm text-brand-dark-green focus:outline-none w-full min-w-[140px]"
+                style={{ colorScheme: 'light' }}
+              />
+            </div>
           )}
 
-          {viewMode === 'weekly' && (
+          {(viewMode === 'monthly' || viewMode === 'yearly') && (
             <div className="flex items-center gap-2">
               <label className="text-sm text-brand-gray-neutral whitespace-nowrap font-medium">Year:</label>
               <select
@@ -682,6 +692,21 @@ export const AdminDashboard: React.FC = () => {
               >
                 {availableYears.map(year => (
                   <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {viewMode === 'monthly' && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-brand-gray-neutral whitespace-nowrap font-medium">Month:</label>
+              <select
+                value={selectedMonth}
+                onChange={(e) => handleMonthChange(parseInt(e.target.value))}
+                className="px-3 py-1.5 border border-brand-light-green rounded-[8px] text-sm text-brand-dark-green bg-brand-white focus:outline-none focus:border-brand-gold cursor-pointer transition-colors"
+              >
+                {monthNames.map((month, index) => (
+                  <option key={index + 1} value={index + 1}>{month}</option>
                 ))}
               </select>
             </div>
@@ -710,7 +735,7 @@ export const AdminDashboard: React.FC = () => {
             }`}
           >
             <CurrencyDollar size={18} />
-            Revenue
+            Company Revenue
           </button>
           <button
             onClick={() => setChartType('cost')}
@@ -721,7 +746,7 @@ export const AdminDashboard: React.FC = () => {
             }`}
           >
             <Receipt size={18} />
-            Employee Cost
+            Total Cost
           </button>
         </div>
 
@@ -743,38 +768,6 @@ export const AdminDashboard: React.FC = () => {
               <div className="h-[350px]">
                 <Bar data={chartData} options={barChartOptions} />
               </div>
-            </div>
-
-            {/* Summary Cards for selected chart type */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-              {analyticsData.labels.map((label, index) => {
-                let value = 0;
-                let displayValue = '';
-                switch (chartType) {
-                  case 'transactions':
-                    value = analyticsData.transactions[index] || 0;
-                    displayValue = value.toString();
-                    break;
-                  case 'revenue':
-                    value = analyticsData.companyRevenue[index] || 0;
-                    displayValue = formatCurrency(value);
-                    break;
-                  case 'cost':
-                    value = analyticsData.employeeCost[index] || 0;
-                    displayValue = formatCurrency(value);
-                    break;
-                }
-                const total = getTotal();
-                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-
-                return (
-                  <div key={label} className="bg-brand-light-green/10 rounded-[8px] p-3 text-center border border-brand-light-green/20">
-                    <div className="text-xs text-brand-gray-neutral mb-1 font-medium">{label}</div>
-                    <div className="text-lg font-semibold text-brand-dark-green">{displayValue}</div>
-                    <div className="text-xs text-brand-gray-neutral">{percentage}% of total</div>
-                  </div>
-                );
-              })}
             </div>
           </div>
         )}
