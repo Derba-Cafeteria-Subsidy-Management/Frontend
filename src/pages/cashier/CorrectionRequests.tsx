@@ -3,7 +3,7 @@ import axiosInstance from '../../client/axios';
 import { useApp } from '../../context/AppContext';
 import { Plus, PaperPlane, ClipboardText } from '@phosphor-icons/react';
 import toast from 'react-hot-toast';
-import type { CorrectionRequest, Transaction, MenuItem } from '../../types/api';
+import type { CorrectionRequest, MenuItem } from '../../types/api';
 
 export const CorrectionRequests: React.FC = () => {
   const { isOffline } = useApp();
@@ -12,14 +12,32 @@ export const CorrectionRequests: React.FC = () => {
 
   // New Request Wizard Modal State
   const [showWizard, setShowWizard] = useState(false);
-  const [todaysTransactions, setTodaysTransactions] = useState<Transaction[]>([]);
+  const [todaysTransactions, setTodaysTransactions] = useState<any[]>([]);
   const [selectedTxnId, setSelectedTxnId] = useState<string>('');
-  const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
+  const [selectedTxn, setSelectedTxn] = useState<any | null>(null);
 
   const [availableMenuItems, setAvailableMenuItems] = useState<MenuItem[]>([]);
+  const [availableDrinkItems, setAvailableDrinkItems] = useState<MenuItem[]>([]);
   const [requestedItemId, setRequestedItemId] = useState<string>('');
+  const [requestedDrinkId, setRequestedDrinkId] = useState<string>('');
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingMenus, setIsLoadingMenus] = useState(false);
+  
+  // Tooltip state
+  const [tooltipText, setTooltipText] = useState('');
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+  const [showTooltip, setShowTooltip] = useState(false);
+
+  /**
+   * Get today's date in YYYY-MM-DD format in Nairobi timezone
+   */
+  const getTodayDate = (): string => {
+    const today = new Date();
+    return today.toLocaleDateString('en-CA', {
+      timeZone: 'Africa/Nairobi'
+    });
+  };
 
   // Fetch submitted requests
   const fetchRequests = async () => {
@@ -49,6 +67,67 @@ export const CorrectionRequests: React.FC = () => {
     fetchRequests();
   }, [isOffline]);
 
+  /**
+   * Fetch all menu items with pagination
+   */
+  const fetchAllMenuItems = async (): Promise<MenuItem[]> => {
+    let allItems: MenuItem[] = [];
+    let currentPage = 1;
+    const pageSize = 50;
+
+    try {
+      const firstRes = await axiosInstance.get('/api/menus/active', {
+        params: {
+          page: currentPage,
+          pageSize: pageSize
+        }
+      });
+
+      if (!firstRes.data?.success || !firstRes.data?.data) {
+        console.warn('Failed to fetch menu items');
+        return [];
+      }
+
+      const firstData = firstRes.data.data;
+      const firstItems = firstData.data || firstData.items || [];
+      const pagination = firstData.pagination || {};
+
+      const totalPages = pagination.totalPages || Math.ceil((pagination.totalCount || 0) / pageSize);
+
+      allItems = [...firstItems];
+
+      if (totalPages > 1) {
+        const pagePromises = [];
+        for (let page = 2; page <= totalPages; page++) {
+          pagePromises.push(
+            axiosInstance.get('/api/menus/active', {
+              params: {
+                page: page,
+                pageSize: pageSize
+              }
+            })
+          );
+        }
+
+        const pageResults = await Promise.all(pagePromises);
+
+        for (const result of pageResults) {
+          if (result.data?.success && result.data?.data) {
+            const pageData = result.data.data;
+            const pageItems = pageData.data || pageData.items || [];
+            allItems = [...allItems, ...pageItems];
+          }
+        }
+      }
+
+      return allItems;
+
+    } catch (error) {
+      console.error('Error fetching menu items:', error);
+      throw error;
+    }
+  };
+
   // Load today's transactions for the creation wizard
   const handleOpenWizard = async () => {
     if (isOffline) {
@@ -60,23 +139,64 @@ export const CorrectionRequests: React.FC = () => {
     setSelectedTxn(null);
     setReason('');
     setRequestedItemId('');
+    setRequestedDrinkId('');
 
     try {
-      const res = await axiosInstance.get('/api/transactions');
-      if (res.data?.success && res.data?.data) {
-        const list = Array.isArray(res.data.data) ? res.data.data : res.data.data.transactions || [];
-        const todayStr = new Date().toDateString();
-        // filter for completed transactions from today that do not have pending corrections
-        const eligible = list.filter(
-          (t: any) =>
-            new Date(t.transactionDate || t.createdAt).toDateString() === todayStr &&
-            t.correctionStatus !== 'PENDING_CORRECTION'
+      const todayDate = getTodayDate();
+
+      const response = await axiosInstance.get('/api/transactions', {
+        params: {
+          from: todayDate,
+          to: todayDate
+        }
+      });
+
+      if (response.data?.success && response.data?.data) {
+        const list = Array.isArray(response.data.data)
+          ? response.data.data
+          : response.data.data.transactions || [];
+
+        const mappedTransactions = list.map((transaction: any) => ({
+          id: transaction.id || transaction.transactionId,
+          employeeId: transaction.employeeNumber || transaction.employeeId || 'N/A',
+          employeeNumber: transaction.employeeNumber || transaction.employeeId || 'N/A',
+          fullName: transaction.fullName || transaction.employeeName || 'Unknown',
+          mealSession: transaction.mealSession || transaction.session || 'N/A',
+          menuItem: transaction.menuItem || transaction.menuItemName || 'N/A',
+          menuPrice: transaction.menuPrice || transaction.price || 0,
+          drinkItem: transaction.drinkItem || transaction.drinkItemName || null,
+          drinkPrice: transaction.drinkPrice || 0,
+          transactionDate: transaction.transactionDate,
+          createdAt: transaction.createdAt,
+          correctionStatus: transaction.correctionStatus || 'COMPLETE',
+        }));
+
+        // Filter out transactions with pending correction
+        const eligible = mappedTransactions.filter(
+          (t: any) => t.correctionStatus !== 'PENDING_CORRECTION'
         );
+
         setTodaysTransactions(eligible);
+        
+        if (eligible.length === 0) {
+          toast('No eligible transactions found for today', {
+            icon: 'ℹ️',
+            duration: 3000,
+          });
+        }
+      } else {
+        setTodaysTransactions([]);
+        toast.error('No transactions available');
       }
-    } catch (e) {
-      console.error(e);
-      toast.error('Failed to load today\'s transactions');
+    } catch (err) {
+      console.error(err);
+      const isAxiosError = err && typeof err === 'object' && 'response' in err;
+      
+      if (isAxiosError && (err as any).response?.status !== 404) {
+        toast.error('Failed to load today\'s transactions');
+      } else {
+        setTodaysTransactions([]);
+      }
     }
   };
 
@@ -87,24 +207,72 @@ export const CorrectionRequests: React.FC = () => {
         const txn = todaysTransactions.find((t) => t.id === selectedTxnId);
         if (txn) {
           setSelectedTxn(txn);
+          setIsLoadingMenus(true);
+          setAvailableMenuItems([]);
+          setAvailableDrinkItems([]);
+          setRequestedItemId('');
+          setRequestedDrinkId('');
+          
           try {
-            const res = await axiosInstance.get('/api/menus/active');
-            if (res.data?.success && res.data?.data?.data) {
-              const activeItems = res.data.data.data;
-              const sessionMenus = activeItems.filter(
-                (m: MenuItem) => m.mealtype === txn.mealSession && m.name !== txn.menuItem
-              );
-              setAvailableMenuItems(sessionMenus);
-            }
+            const allItems = await fetchAllMenuItems();
+            
+            // Filter meal items (non-drinks)
+            const sessionMenus = allItems.filter(
+              (item: MenuItem) => {
+                const lowerName = item.name.toLowerCase();
+                const lowerDesc = item.description?.toLowerCase() || '';
+                const isDrink = 
+                  lowerName.includes('drink') ||
+                  lowerName.includes('juice') ||
+                  lowerName.includes('soda') ||
+                  lowerName.includes('water') ||
+                  lowerName.includes('coffee') ||
+                  lowerName.includes('tea') ||
+                  lowerName.includes('milk') ||
+                  lowerName.includes('smoothie') ||
+                  lowerDesc.includes('drink') ||
+                  lowerDesc.includes('beverage');
+                
+                return (item as any).mealtype === txn.mealSession && 
+                       item.name !== txn.menuItem && 
+                       !isDrink;
+              }
+            );
+            
+            // Filter drink items
+            const drinkItems = allItems.filter(
+              (item: MenuItem) => {
+                const lowerName = item.name.toLowerCase();
+                const lowerDesc = item.description?.toLowerCase() || '';
+                return (
+                  lowerName.includes('drink') ||
+                  lowerName.includes('juice') ||
+                  lowerName.includes('soda') ||
+                  lowerName.includes('water') ||
+                  lowerName.includes('coffee') ||
+                  lowerName.includes('tea') ||
+                  lowerName.includes('milk') ||
+                  lowerName.includes('smoothie') ||
+                  lowerDesc.includes('drink') ||
+                  lowerDesc.includes('beverage')
+                );
+              }
+            );
+            
+            setAvailableMenuItems(sessionMenus);
+            setAvailableDrinkItems(drinkItems);
           } catch (e) {
             console.error(e);
             toast.error('Failed to load alternative menu items');
+          } finally {
+            setIsLoadingMenus(false);
           }
-          setRequestedItemId('');
         }
       } else {
         setSelectedTxn(null);
         setAvailableMenuItems([]);
+        setAvailableDrinkItems([]);
+        setIsLoadingMenus(false);
       }
     };
     loadTxnDetails();
@@ -112,14 +280,28 @@ export const CorrectionRequests: React.FC = () => {
 
   const handleSubmitWizard = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedTxn || !requestedItemId || !reason.trim()) {
-      toast.error('Please complete all fields');
+    
+    // Validate that at least one correction is selected
+    if (!selectedTxn) {
+      toast.error('No transaction selected');
       return;
     }
+    
+    if (!requestedItemId && !requestedDrinkId) {
+      toast.error('Please select at least one item to correct (meal or drink)');
+      return;
+    }
+    
+    if (!reason.trim()) {
+      toast.error('Please provide a reason for the correction');
+      return;
+    }
+    
     if (reason.trim().length < 10) {
       toast.error('Reason must be at least 10 characters long');
       return;
     }
+    
     if (reason.length > 250) {
       toast.error('Reason must not exceed 250 characters');
       return;
@@ -127,11 +309,21 @@ export const CorrectionRequests: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const res = await axiosInstance.post('/api/corrections', {
+      // Build correction payload
+      const correctionData: any = {
         transactionId: selectedTxn.id,
-        newMenuItemId: requestedItemId,
         reason: reason.trim(),
-      });
+      };
+      
+      if (requestedItemId) {
+        correctionData.newMenuItemId = requestedItemId;
+      }
+      
+      if (requestedDrinkId) {
+        correctionData.newDrinkItemId = requestedDrinkId;
+      }
+
+      const res = await axiosInstance.post('/api/corrections', correctionData);
 
       if (res.data?.success) {
         toast.success('Correction request submitted for admin review');
@@ -140,13 +332,48 @@ export const CorrectionRequests: React.FC = () => {
       }
     } catch (err) {
       console.error(err);
+      toast.error('Failed to submit correction request');
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Tooltip handlers
+  const handleMouseEnter = (e: React.MouseEvent, text: string) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setTooltipText(text);
+    setTooltipPosition({
+      x: rect.left,
+      y: rect.top - 10
+    });
+    setShowTooltip(true);
+  };
+
+  const handleMouseLeave = () => {
+    setShowTooltip(false);
+  };
+
   return (
     <div className="space-y-6">
+      {/* Tooltip */}
+      {showTooltip && (
+        <div 
+          className="fixed z-[9999] bg-brand-dark-green text-brand-white text-xs rounded-lg p-3 max-w-md whitespace-normal break-words shadow-lg border border-brand-light-green/20"
+          style={{
+            left: `${tooltipPosition.x}px`,
+            top: `${tooltipPosition.y - 8}px`,
+            transform: 'translateY(-100%)',
+            maxWidth: '400px',
+            minWidth: '200px'
+          }}
+        >
+          {tooltipText}
+          <div 
+            className="absolute bottom-[-6px] left-4 w-3 h-3 bg-brand-dark-green rotate-45"
+          ></div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between border-b border-brand-light-green/30 pb-4 select-none">
         <div>
@@ -186,7 +413,6 @@ export const CorrectionRequests: React.FC = () => {
               <thead>
                 <tr className="border-b border-brand-light-green bg-[#F9FAFB]/50 text-[13px] font-medium text-brand-dark-green select-none">
                   <th className="p-4">Submission Date</th>
-                  <th className="p-4">Transaction ID</th>
                   <th className="p-4">Employee</th>
                   <th className="p-4">Original Selection</th>
                   <th className="p-4">Requested Selection</th>
@@ -203,20 +429,16 @@ export const CorrectionRequests: React.FC = () => {
                     minute: '2-digit',
                   });
 
-                  // Safely extract old and new item values
-                  const oldItemName = req.old_values?.menuItemName || 'Original Item';
-                  const oldPrice = req.old_values?.menuPrice || 0;
-                  const newItemName = req.new_values?.menuItemName || 'Requested Item';
-                  const newPrice = req.new_values?.menuPrice || 0;
+                  const oldItemName = req.oldValue?.menuItemName || 'Original Item';
+                  const oldPrice = req.oldValue?.menuPrice || 0;
+                  const newItemName = req.newValue?.menuItemName || 'Requested Item';
+                  const newPrice = req.newValue?.menuPrice || 0;
 
                   return (
                     <tr key={req.id} className="hover:bg-brand-light-green/5 transition-colors">
                       <td className="p-4 text-brand-gray-neutral text-xs whitespace-nowrap">{dateStr}</td>
-                      <td className="p-4 font-mono text-[13px] text-brand-dark-green whitespace-nowrap">
-                        {req.transactionId}
-                      </td>
                       <td className="p-4 font-medium text-brand-dark-green whitespace-nowrap">
-                        {req.old_values?.fullName || 'Employee'}
+                        {req.cashierName || 'Employee'}
                       </td>
                       <td className="p-4 text-brand-error-red line-through whitespace-nowrap">
                         {oldItemName} ({oldPrice.toFixed(2)})
@@ -224,17 +446,24 @@ export const CorrectionRequests: React.FC = () => {
                       <td className="p-4 text-brand-dark-green font-semibold whitespace-nowrap">
                         {newItemName} ({newPrice.toFixed(2)})
                       </td>
-                      <td className="p-4 text-brand-gray-neutral text-xs max-w-[200px] truncate" title={req.reason}>
-                        {req.reason}
+                      <td className="p-4 text-brand-gray-neutral text-xs max-w-[200px]">
+                        <div 
+                          className="truncate cursor-help relative"
+                          onMouseEnter={(e) => handleMouseEnter(e, req.reason)}
+                          onMouseLeave={handleMouseLeave}
+                        >
+                          {req.reason}
+                        </div>
                       </td>
                       <td className="p-4 text-center whitespace-nowrap select-none">
                         <span
-                          className={`text-[11px] font-semibold px-3 py-1 rounded-full ${req.status === 'APPROVED'
+                          className={`text-[11px] font-semibold px-3 py-1 rounded-full ${
+                            req.status === 'APPROVED'
                               ? 'bg-brand-dark-green text-brand-white'
                               : req.status === 'PENDING'
                                 ? 'bg-brand-light-green text-brand-dark-green'
                                 : 'bg-red-100 text-brand-error-red'
-                            }`}
+                          }`}
                         >
                           {req.status}
                         </span>
@@ -251,9 +480,9 @@ export const CorrectionRequests: React.FC = () => {
       {/* New Request Creation Wizard Modal */}
       {showWizard && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-brand-white rounded-[12px] p-6 max-w-[480px] w-full border border-[rgba(50,100,50,0.15)] shadow-xl space-y-5 animate-scanner-pulse/0">
+          <div className="bg-brand-white rounded-[12px] p-6 max-w-[480px] w-full border border-[rgba(50,100,50,0.15)] shadow-xl space-y-5 max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3 select-none">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3 select-none sticky top-0 bg-white z-10">
               <h3 className="text-brand-dark-green font-semibold text-[18px]">Create Correction Request</h3>
               <button
                 onClick={() => setShowWizard(false)}
@@ -269,27 +498,41 @@ export const CorrectionRequests: React.FC = () => {
                 <label className="block text-[13px] font-medium text-brand-dark-green">
                   Select Transaction (Today's Only)
                 </label>
-                <select
-                  required
-                  value={selectedTxnId}
-                  onChange={(e) => setSelectedTxnId(e.target.value)}
-                  className="w-full h-[44px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer"
-                >
-                  <option value="">-- Select Transaction --</option>
-                  {todaysTransactions.map((t) => {
-                    const time = new Date(t.transactionDate || t.createdAt).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    });
-                    return (
-                      <option key={t.id} value={t.id}>
-                        [{time}] {t.id} - {t.fullName} ({t.menuItem})
-                      </option>
-                    );
-                  })}
-                </select>
+                <div className="relative">
+                  <select
+                    required
+                    value={selectedTxnId}
+                    onChange={(e) => setSelectedTxnId(e.target.value)}
+                    className="w-full h-[44px] px-3 pr-8 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer appearance-none"
+                  >
+                    <option value="">-- Select Transaction --</option>
+                    {todaysTransactions.map((t: any) => {
+                      const time = new Date(t.transactionDate || t.createdAt).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      });
+                      return (
+                        <option key={t.id} value={t.id}>
+                          [{time}] {t.fullName} - {t.menuItem} ({(t.menuPrice || 0).toFixed(2)} ETB)
+                          {t.drinkItem && ` + ${t.drinkItem}`}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                  </div>
+                </div>
                 {todaysTransactions.length === 0 && (
-                  <p className="text-[11px] text-brand-error-red">No eligible transactions recorded today.</p>
+                  <div className="bg-blue-50 border border-blue-200 rounded-[8px] p-3 text-sm">
+                    <p className="text-blue-700 font-medium">No transactions available today</p>
+                    <p className="text-blue-600 text-xs mt-1">
+                      You can only request corrections for transactions made today. 
+                      Please complete a meal transaction first before submitting a correction request.
+                    </p>
+                  </div>
                 )}
               </div>
 
@@ -306,29 +549,97 @@ export const CorrectionRequests: React.FC = () => {
                       <span className="text-brand-dark-green uppercase font-semibold">{selectedTxn.mealSession}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-brand-gray-neutral font-medium">Original Item:</span>
+                      <span className="text-brand-gray-neutral font-medium">Original Meal:</span>
                       <span className="text-brand-error-red font-semibold line-through">
                         {selectedTxn.menuItem} ({(selectedTxn.menuPrice || 0).toFixed(2)} ETB)
                       </span>
                     </div>
+                    {selectedTxn.drinkItem && selectedTxn.drinkItem !== 'N/A' && (
+                      <div className="flex justify-between">
+                        <span className="text-brand-gray-neutral font-medium">Original Drink:</span>
+                        <span className="text-brand-error-red font-semibold line-through">
+                          {selectedTxn.drinkItem} ({(selectedTxn.drinkPrice || 0).toFixed(2)} ETB)
+                        </span>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Correct item selector */}
+                  {/* Correct Meal selector */}
                   <div className="space-y-1.5">
-                    <label className="block text-[13px] font-medium text-brand-dark-green">Correct Menu Item</label>
-                    <select
-                      required
-                      value={requestedItemId}
-                      onChange={(e) => setRequestedItemId(e.target.value)}
-                      className="w-full h-[44px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer"
-                    >
-                      <option value="">-- Choose correct item --</option>
-                      {availableMenuItems.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name} ({(item.currentPrice || 0).toFixed(2)} ETB)
-                        </option>
-                      ))}
-                    </select>
+                    <label className="block text-[13px] font-medium text-brand-dark-green">
+                      Correct Meal <span className="text-brand-gray-neutral/60 text-xs">(Optional - skip to keep same)</span>
+                    </label>
+                    {isLoadingMenus ? (
+                      <div className="h-[44px] flex items-center px-3 border border-gray-300 rounded-[8px] text-brand-gray-neutral text-sm">
+                        Loading menu items...
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <select
+                          value={requestedItemId}
+                          onChange={(e) => setRequestedItemId(e.target.value)}
+                          className="w-full h-[44px] px-3 pr-8 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer appearance-none"
+                        >
+                          <option value="">-- Keep current meal --</option>
+                          {availableMenuItems.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name} ({(item.currentPrice || 0).toFixed(2)} ETB)
+                            </option>
+                          ))}
+                        </select>
+                        <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                          </svg>
+                        </div>
+                      </div>
+                    )}
+                    {!isLoadingMenus && availableMenuItems.length === 0 && (
+                      <p className="text-[11px] text-brand-error-red">
+                        No other active meal items found for this session.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Correct Drink selector */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[13px] font-medium text-brand-dark-green">
+                      Correct Drink <span className="text-brand-gray-neutral/60 text-xs">(Optional - skip to keep same)</span>
+                    </label>
+                    {isLoadingMenus ? (
+                      <div className="h-[44px] flex items-center px-3 border border-gray-300 rounded-[8px] text-brand-gray-neutral text-sm">
+                        Loading drink items...
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <select
+                          value={requestedDrinkId}
+                          onChange={(e) => setRequestedDrinkId(e.target.value)}
+                          className="w-full h-[44px] px-3 pr-8 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer appearance-none"
+                        >
+                          <option value="">-- Keep current drink --</option>
+                          {availableDrinkItems.length > 0 ? (
+                            availableDrinkItems.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name} ({(item.currentPrice || 0).toFixed(2)} ETB)
+                              </option>
+                            ))
+                          ) : (
+                            <option value="" disabled>No drinks available</option>
+                          )}
+                        </select>
+                        <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                          </svg>
+                        </div>
+                      </div>
+                    )}
+                    {!isLoadingMenus && availableDrinkItems.length === 0 && (
+                      <p className="text-[11px] text-brand-gray-neutral">
+                        No drink items available to select.
+                      </p>
+                    )}
                   </div>
 
                   {/* Reason Text */}
@@ -357,8 +668,8 @@ export const CorrectionRequests: React.FC = () => {
               {/* Submit */}
               <button
                 type="submit"
-                disabled={isSubmitting || !selectedTxn || !requestedItemId || !reason.trim()}
-                className="w-full h-[48px] bg-brand-gold text-brand-white rounded-[8px] font-medium text-sm hover:opacity-90 transition disabled:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                disabled={isSubmitting || !selectedTxn || (!requestedItemId && !requestedDrinkId) || !reason.trim() || todaysTransactions.length === 0}
+                className="w-full h-[48px] bg-brand-gold text-brand-white rounded-[8px] font-medium text-sm hover:opacity-90 transition disabled:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 sticky bottom-0"
               >
                 {isSubmitting ? (
                   'Submitting...'
