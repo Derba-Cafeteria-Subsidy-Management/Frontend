@@ -64,17 +64,30 @@ export interface SubsidyConfig {
   updatedBy?: string;
 }
 
+// In your types/api.ts file, update the CorrectionRequest type:
+
 export interface CorrectionRequest {
   id: string;
+  cashierName: string;
   transactionId: string;
+  oldValue: {
+    menuPrice: number;
+    menuItemId: string;
+    companyShare: number;
+    menuItemName: string;
+    employeeShare: number;
+  };
+  newValue: {
+    menuPrice: number;
+    menuItemId: string;
+    companyShare: number;
+    menuItemName: string;
+    employeeShare: number;
+  };
   reason: string;
-  status: CorrectionStatus;
-  old_values: any;
-  new_values: any;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
   createdAt: string;
-  approvedAt?: string | null;
-  rejectedAt?: string | null;
-  rejectionReason?: string | null;
+  updatedAt?: string;
 }
 
 export interface AuditLog {

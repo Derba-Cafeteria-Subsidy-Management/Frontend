@@ -422,7 +422,7 @@ export const ReportsHub: React.FC = () => {
     try {
       const ExcelJS = (await import('exceljs')).default;
       const workbook = new ExcelJS.Workbook();
-      workbook.creator = 'Derba Cafeteria Admin';
+      workbook.creator = 'Derba MIDROC Cement Cafeteria Admin';
       const sheet = workbook.addWorksheet('Report');
 
       sheet.views = [{ showGridLines: true }];
@@ -605,7 +605,7 @@ export const ReportsHub: React.FC = () => {
 
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(16);
-      doc.text('DERBA CAFETERIA SUBSIDY SYSTEM', 15, 12);
+      doc.text('DERBA MIDROC CEMENT CAFETERIA SUBSIDY SYSTEM', 15, 12);
 
       const range = getPeriodRange();
       doc.setFontSize(10);
