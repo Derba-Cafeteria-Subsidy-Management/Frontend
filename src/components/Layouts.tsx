@@ -59,8 +59,9 @@ export const CashierLayout: React.FC = () => {
   const steps = [
     { num: 1, label: 'ID', activeOn: [1] },
     { num: 2, label: 'Session', activeOn: [2] },
-    { num: 3, label: 'Menu', activeOn: [3] },
-    { num: 4, label: 'Review', activeOn: [4, 5] }, // remains review status or completed
+    { num: 3, label: 'Meal', activeOn: [3] },
+    { num: 4, label: 'Drink', activeOn: [4] },
+    { num: 5, label: 'Review', activeOn: [5, 6] }, // remains review status or completed
   ];
 
   return (
@@ -70,7 +71,7 @@ export const CashierLayout: React.FC = () => {
         {/* Left: Logo */}
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/cashier')}>
           <span className="text-brand-gold text-2xl font-bold font-mono"><img width='50px' src={logo} /></span>
-          <span className="text-brand-dark-green font-semibold text-lg font-sans tracking-wide">Derba Cafeteria</span>
+          <span className="text-brand-dark-green font-semibold text-lg font-sans tracking-wide">Derba MIDROC Cement Cafeteria</span>
         </div>
 
         {/* Center: Title / Context */}
@@ -244,7 +245,7 @@ const BaseAdminLayout: React.FC<SidebarProps> = ({ title, navItems }) => {
           {/* Logo Brand Area */}
           <div className="p-6 border-b border-brand-light-green/30 flex items-center gap-2">
             <span className="text-brand-gold text-2xl font-bold font-mono"><img width='50px' src={logo} /></span>
-            <span className="text-brand-dark-green font-semibold font-sans tracking-wide">Derba Cafeteria</span>
+            <span className="text-brand-dark-green font-semibold font-sans tracking-wide">Derba MIDROC Cement Cafeteria</span>
           </div>
 
           <div className="px-4 py-3">

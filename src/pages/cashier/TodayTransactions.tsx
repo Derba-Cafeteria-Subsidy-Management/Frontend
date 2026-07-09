@@ -15,9 +15,10 @@ import {
   PencilSimple,
   Warning,
   List,
+  CaretLeft,
+  CaretRight,
 } from '@phosphor-icons/react';
 import toast from 'react-hot-toast';
-import type { Transaction, MenuItem } from '../../types/api';
 
 /**
  * TodayTransactions Component
@@ -27,16 +28,24 @@ export const TodayTransactions: React.FC = () => {
   const { isOffline } = useApp();
 
   // State for transactions and filtering
-  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
-  const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
+  const [allTransactions, setAllTransactions] = useState<any[]>([]);
+  const [filteredTransactions, setFilteredTransactions] = useState<any[]>([]);
   const [filterSession, setFilterSession] = useState<'All' | 'BREAKFAST' | 'LUNCH' | 'DINNER'>('All');
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+
   // Correction request states
-  const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
-  const [availableMenuItems, setAvailableMenuItems] = useState<MenuItem[]>([]);
+  const [selectedTxn, setSelectedTxn] = useState<any | null>(null);
+  const [availableMenuItems, setAvailableMenuItems] = useState<any[]>([]);
+  const [availableDrinkItems, setAvailableDrinkItems] = useState<any[]>([]);
   const [requestedItemId, setRequestedItemId] = useState<string>('');
+  const [requestedDrinkId, setRequestedDrinkId] = useState<string>('');
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingMenus, setIsLoadingMenus] = useState(false);
@@ -44,13 +53,12 @@ export const TodayTransactions: React.FC = () => {
   /**
    * Fetch all menu items with pagination
    */
-  const fetchAllMenuItems = async (): Promise<MenuItem[]> => {
-    let allItems: MenuItem[] = [];
+  const fetchAllMenuItems = async (): Promise<any[]> => {
+    let allItems: any[] = [];
     let currentPage = 1;
     const pageSize = 50;
 
     try {
-      // First, get the first page to know total pages
       const firstRes = await axiosInstance.get('/api/menus/active', {
         params: {
           page: currentPage,
@@ -67,15 +75,10 @@ export const TodayTransactions: React.FC = () => {
       const firstItems = firstData.data || firstData.items || [];
       const pagination = firstData.pagination || {};
 
-      // Get total pages from pagination
       const totalPages = pagination.totalPages || Math.ceil((pagination.totalCount || 0) / pageSize);
 
-      console.log(`Total menu items: ${pagination.totalCount || 0}, Total pages: ${totalPages}`);
-
-      // Add first page items
       allItems = [...firstItems];
 
-      // Fetch remaining pages in parallel
       if (totalPages > 1) {
         const pagePromises = [];
         for (let page = 2; page <= totalPages; page++) {
@@ -100,7 +103,6 @@ export const TodayTransactions: React.FC = () => {
         }
       }
 
-      console.log(`Total menu items fetched: ${allItems.length}`);
       return allItems;
 
     } catch (error) {
@@ -111,19 +113,16 @@ export const TodayTransactions: React.FC = () => {
 
   /**
    * Format time in Nairobi timezone (UTC+3)
-   * Uses the createdAt timestamp which contains the full date and time
    */
   const formatTime = (createdAt: string): string => {
     if (!createdAt) return '--:--';
 
-    // If it's just a YYYY-MM-DD date string without timestamp intervals, we cannot extract time
     if (createdAt.length <= 10 && !createdAt.includes('T')) {
       return '--:--';
     }
 
     const date = new Date(createdAt);
 
-    // Check for an invalid Date object
     if (isNaN(date.getTime())) return '--:--';
 
     return date.toLocaleTimeString('en-US', {
@@ -136,7 +135,6 @@ export const TodayTransactions: React.FC = () => {
 
   /**
    * Format date in Nairobi timezone (UTC+3)
-   * Uses createdAt if available (has full timestamp), otherwise falls back to transactionDate
    */
   const formatDate = (dateString: string, createdAt?: string): string => {
     const dateToUse = createdAt || dateString;
@@ -179,18 +177,18 @@ export const TodayTransactions: React.FC = () => {
   /**
    * Get the status badge style for a transaction
    */
-  const getStatusBadge = (isCorrected: boolean) => {
-    if (isCorrected) {
-      return {
-        className: 'bg-brand-warning/10 text-brand-warning',
-        label: 'Pending Adjudication',
-      };
-    }
-    return {
-      className: 'bg-brand-dark-green/10 text-brand-dark-green',
-      label: 'Complete',
-    };
-  };
+  // const getStatusBadge = (isCorrected: boolean) => {
+  //   if (isCorrected) {
+  //     return {
+  //       className: 'bg-brand-warning/10 text-brand-warning',
+  //       label: 'Pending Adjudication',
+  //     };
+  //   }
+  //   return {
+  //     className: 'bg-brand-dark-green/10 text-brand-dark-green',
+  //     label: 'Complete',
+  //   };
+  // };
 
   /**
    * Fetch today's transactions from the backend with date filtering
@@ -198,7 +196,6 @@ export const TodayTransactions: React.FC = () => {
   const fetchTodayTransactions = async () => {
     setLoading(true);
     try {
-      // Check if offline
       if (isOffline) {
         toast.error('Currently offline. Live transactions cannot be retrieved.');
         setAllTransactions([]);
@@ -209,21 +206,28 @@ export const TodayTransactions: React.FC = () => {
 
       const todayDate = getTodayDate();
 
-      // Fetch transactions from API with date range filtering
       const response = await axiosInstance.get('/api/transactions', {
         params: {
           from: todayDate,
-          to: todayDate
+          to: todayDate,
+          page: currentPage,
+          pageSize: itemsPerPage
         }
       });
 
       if (response.data?.success && response.data?.data) {
-        // Extract transaction list from response
         const list = Array.isArray(response.data.data)
           ? response.data.data
           : response.data.data.transactions || [];
+        
+        // Extract pagination info
+        const pagination = response.data.data.pagination || {};
+        const total = pagination.totalCount || pagination.total || list.length;
+        const totalPg = pagination.totalPages || Math.ceil(total / itemsPerPage);
+        
+        setTotalItems(total);
+        setTotalPages(totalPg);
 
-        // Map and transform the transaction data
         const mappedTransactions = list.map((transaction: any) => ({
           id: transaction.id || transaction.transactionId,
           employeeId: transaction.employeeNumber || transaction.employeeId || 'N/A',
@@ -232,6 +236,8 @@ export const TodayTransactions: React.FC = () => {
           mealSession: transaction.mealSession || transaction.session || 'N/A',
           menuItem: transaction.menuItem || transaction.menuItemName || 'N/A',
           menuPrice: transaction.menuPrice || transaction.price || 0,
+          drinkItem: transaction.drinkItem || transaction.drinkItemName || null,
+          drinkPrice: transaction.drinkPrice || 0,
           transactionDate: transaction.transactionDate,
           createdAt: transaction.createdAt,
           correctionStatus: transaction.correctionStatus || 'COMPLETE',
@@ -252,15 +258,13 @@ export const TodayTransactions: React.FC = () => {
    * Apply session and search filters to transactions
    */
   const applyFilters = useCallback(
-    (transactions: Transaction[], session: string, search: string) => {
+    (transactions: any[], session: string, search: string) => {
       let filtered = [...transactions];
 
-      // Apply session filter
       if (session !== 'All') {
         filtered = filtered.filter((transaction) => transaction.mealSession === session);
       }
 
-      // Apply search filter (by name or employee number)
       if (search.trim()) {
         const searchLower = search.toLowerCase().trim();
         filtered = filtered.filter(
@@ -277,13 +281,14 @@ export const TodayTransactions: React.FC = () => {
 
   /**
    * Handle correction request modal open
-   * Fetches ALL menu items with pagination
    */
-  const handleOpenCorrectionModal = async (transaction: Transaction) => {
+  const handleOpenCorrectionModal = async (transaction: any) => {
     setSelectedTxn(transaction);
     setReason('');
     setRequestedItemId('');
+    setRequestedDrinkId('');
     setAvailableMenuItems([]);
+    setAvailableDrinkItems([]);
     setIsLoadingMenus(true);
 
     try {
@@ -293,18 +298,53 @@ export const TodayTransactions: React.FC = () => {
         return;
       }
 
-      // ✅ Fetch ALL menu items with pagination
       const allItems = await fetchAllMenuItems();
 
-      // Filter items for the transaction's session
+      // Filter meal items (non-drinks)
       const sessionMenus = allItems.filter(
-        (item: MenuItem) =>
-          (item as any).mealtype === transaction.mealSession &&
-          item.name !== transaction.menuItem
+        (item: any) => {
+          const lowerName = item.name.toLowerCase();
+          const lowerDesc = item.description?.toLowerCase() || '';
+          const isDrink = 
+            lowerName.includes('drink') ||
+            lowerName.includes('juice') ||
+            lowerName.includes('soda') ||
+            lowerName.includes('water') ||
+            lowerName.includes('coffee') ||
+            lowerName.includes('tea') ||
+            lowerName.includes('milk') ||
+            lowerName.includes('smoothie') ||
+            lowerDesc.includes('drink') ||
+            lowerDesc.includes('beverage');
+          
+          return item.mealtype === transaction.mealSession && 
+                 item.name !== transaction.menuItem && 
+                 !isDrink;
+        }
       );
 
-      console.log(`Found ${sessionMenus.length} menu items for session ${transaction.mealSession}`);
+      // Filter drink items
+      const drinkItems = allItems.filter(
+        (item: any) => {
+          const lowerName = item.name.toLowerCase();
+          const lowerDesc = item.description?.toLowerCase() || '';
+          return (
+            lowerName.includes('drink') ||
+            lowerName.includes('juice') ||
+            lowerName.includes('soda') ||
+            lowerName.includes('water') ||
+            lowerName.includes('coffee') ||
+            lowerName.includes('tea') ||
+            lowerName.includes('milk') ||
+            lowerName.includes('smoothie') ||
+            lowerDesc.includes('drink') ||
+            lowerDesc.includes('beverage')
+          );
+        }
+      );
+
       setAvailableMenuItems(sessionMenus);
+      setAvailableDrinkItems(drinkItems);
 
     } catch (error) {
       console.error('Error fetching menu items:', error);
@@ -320,9 +360,13 @@ export const TodayTransactions: React.FC = () => {
   const handleSubmitCorrection = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    // Validate form
-    if (!selectedTxn || !requestedItemId) {
-      toast.error('Please select a menu item');
+    if (!selectedTxn) {
+      toast.error('No transaction selected');
+      return;
+    }
+
+    if (!requestedItemId && !requestedDrinkId) {
+      toast.error('Please select at least one item to correct (meal or drink)');
       return;
     }
 
@@ -343,16 +387,24 @@ export const TodayTransactions: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const response = await axiosInstance.post('/api/corrections', {
+      const correctionData: any = {
         transactionId: selectedTxn.id,
-        newMenuItemId: requestedItemId,
         reason: reason.trim(),
-      });
+      };
+      
+      if (requestedItemId) {
+        correctionData.newMenuItemId = requestedItemId;
+      }
+      
+      if (requestedDrinkId) {
+        correctionData.newDrinkItemId = requestedDrinkId;
+      }
+
+      const response = await axiosInstance.post('/api/corrections', correctionData);
 
       if (response.data?.success) {
         toast.success('Correction request submitted for admin review');
         setSelectedTxn(null);
-        // Refresh transactions
         await fetchTodayTransactions();
       }
     } catch (error) {
@@ -363,10 +415,48 @@ export const TodayTransactions: React.FC = () => {
     }
   };
 
+  /**
+   * Handle page change
+   */
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  /**
+   * Handle items per page change
+   */
+  const handleItemsPerPageChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newItemsPerPage = parseInt(event.target.value);
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1);
+  };
+
+  /**
+   * Generate page numbers for pagination display
+   */
+  const getPageNumbers = () => {
+    const pageNumbers = [];
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      pageNumbers.push(i);
+    }
+
+    return pageNumbers;
+  };
+
   // Initialize data on mount
   useEffect(() => {
     fetchTodayTransactions();
-  }, [isOffline]);
+  }, [isOffline, currentPage, itemsPerPage]);
 
   // Re-apply filters when they change
   useEffect(() => {
@@ -376,11 +466,13 @@ export const TodayTransactions: React.FC = () => {
   // Handle search input change
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
+    setCurrentPage(1);
   };
 
   // Handle session filter change
   const handleSessionFilterChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     setFilterSession(event.target.value as any);
+    setCurrentPage(1);
   };
 
   /**
@@ -417,13 +509,99 @@ export const TodayTransactions: React.FC = () => {
   );
 
   /**
+   * Render pagination controls
+   */
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+
+    const pageNumbers = getPageNumbers();
+    const startIndex = (currentPage - 1) * itemsPerPage + 1;
+    const endIndex = Math.min(currentPage * itemsPerPage, totalItems);
+
+    return (
+      <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-brand-gray-neutral">
+            Showing {startIndex} to {endIndex} of {totalItems} entries
+          </span>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-brand-gray-neutral">Show:</label>
+            <select
+              value={itemsPerPage}
+              onChange={handleItemsPerPageChange}
+              className="h-8 px-2 border border-gray-300 rounded-[6px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer"
+            >
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => handlePageChange(1)}
+            disabled={currentPage === 1}
+            className="h-8 w-8 flex items-center justify-center rounded-[6px] border border-gray-300 text-brand-gray-neutral hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <CaretLeft size={16} />
+            <CaretLeft size={16} className="-ml-1" />
+          </button>
+          
+          <button
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="h-8 w-8 flex items-center justify-center rounded-[6px] border border-gray-300 text-brand-gray-neutral hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <CaretLeft size={16} />
+          </button>
+
+          {pageNumbers.map((pageNum) => (
+            <button
+              key={pageNum}
+              onClick={() => handlePageChange(pageNum)}
+              className={`h-8 min-w-[32px] px-2 flex items-center justify-center rounded-[6px] border transition-colors ${
+                currentPage === pageNum
+                  ? 'bg-brand-gold text-brand-white border-brand-gold'
+                  : 'border-gray-300 text-brand-dark-green hover:bg-gray-50'
+              }`}
+            >
+              {pageNum}
+            </button>
+          ))}
+
+          <button
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className="h-8 w-8 flex items-center justify-center rounded-[6px] border border-gray-300 text-brand-gray-neutral hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <CaretRight size={16} />
+          </button>
+
+          <button
+            onClick={() => handlePageChange(totalPages)}
+            disabled={currentPage === totalPages}
+            className="h-8 w-8 flex items-center justify-center rounded-[6px] border border-gray-300 text-brand-gray-neutral hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <CaretRight size={16} />
+            <CaretRight size={16} className="-ml-1" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  /**
    * Render transaction table row
    */
-  const renderTransactionRow = (transaction: Transaction) => {
+  const renderTransactionRow = (transaction: any) => {
     const timeStr = formatTime(transaction.createdAt || transaction.transactionDate);
     const dateStr = formatDate(transaction.transactionDate, transaction.createdAt);
     const isCorrected = transaction.correctionStatus === 'PENDING_CORRECTION';
-    const statusBadge = getStatusBadge(isCorrected);
+    // const statusBadge = getStatusBadge(isCorrected);
+    const hasDrink = transaction.drinkItem && transaction.drinkItem !== 'N/A' && transaction.drinkItem !== null;
 
     return (
       <tr
@@ -462,25 +640,31 @@ export const TodayTransactions: React.FC = () => {
           </span>
         </td>
 
-        {/* Menu Item Column */}
+        {/* Menu Item & Price Column (merged) */}
         <td className="p-4">
-          <span className="text-brand-dark-green">{transaction.menuItem}</span>
+          <div className="flex flex-col">
+            <span className="text-brand-dark-green font-medium">{transaction.menuItem}</span>
+            <span className="text-[11px] text-brand-gray-neutral">
+              {(transaction.menuPrice || 0).toFixed(2)} ETB
+            </span>
+          </div>
         </td>
 
-        {/* Price Column */}
-        <td className="p-4 text-right">
-          <span className="font-semibold text-brand-dark-green">
-            {(transaction.menuPrice || 0).toFixed(2)} ETB
-          </span>
-        </td>
-
-        {/* Status Column */}
-        <td className="p-4 text-center">
-          <span
-            className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${statusBadge.className}`}
-          >
-            {statusBadge.label}
-          </span>
+        {/* Drink & Drink Price Column */}
+        <td className="p-4">
+          {hasDrink ? (
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1.5">
+                <span className="text-lg">🥤</span>
+                <span className="text-brand-dark-green font-medium">{transaction.drinkItem}</span>
+              </div>
+              <span className="text-[11px] text-brand-gray-neutral ml-7">
+                {(transaction.drinkPrice || 0).toFixed(2)} ETB
+              </span>
+            </div>
+          ) : (
+            <span className="text-brand-gray-neutral/50 text-xs">No drink</span>
+          )}
         </td>
 
         {/* Action Column */}
@@ -515,7 +699,7 @@ export const TodayTransactions: React.FC = () => {
             Today's Transactions
           </h1>
           <p className="text-brand-gray-neutral text-sm mt-2">
-            Showing {filteredTransactions.length} of {allTransactions.length} transactions
+            Showing {filteredTransactions.length} of {totalItems} transactions
           </p>
         </div>
 
@@ -527,8 +711,8 @@ export const TodayTransactions: React.FC = () => {
               type="text"
               value={searchTerm}
               onChange={handleSearchChange}
-              placeholder="Search by name or number..."
-              className="h-10 w-48 px-3 pr-10 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white placeholder-brand-gray-neutral/60 transition-colors"
+              placeholder="Search by name or employee number..."
+              className="h-10 w-72 px-3 pr-10 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white placeholder-brand-gray-neutral/60 transition-colors"
             />
             <MagnifyingGlass
               size={18}
@@ -562,52 +746,56 @@ export const TodayTransactions: React.FC = () => {
         ) : filteredTransactions.length === 0 ? (
           renderEmptyState()
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm border-collapse">
-              {/* Table Header */}
-              <thead>
-                <tr className="border-b border-brand-light-green bg-[#F9FAFB]/50 text-[13px] font-medium text-brand-dark-green select-none">
-                  <th className="p-4 whitespace-nowrap">
-                    <div className="flex items-center gap-1.5">
-                      <Clock size={16} className="text-brand-gray-neutral" />
-                      Time
-                    </div>
-                  </th>
-                  <th className="p-4 whitespace-nowrap">
-                    <div className="flex items-center gap-1.5">
-                      <User size={16} className="text-brand-gray-neutral" />
-                      Employee Number
-                    </div>
-                  </th>
-                  <th className="p-4 whitespace-nowrap">
-                    <div className="flex items-center gap-1.5">
-                      <UserCircle size={16} className="text-brand-gray-neutral" />
-                      Name
-                    </div>
-                  </th>
-                  <th className="p-4 whitespace-nowrap">Session</th>
-                  <th className="p-4 whitespace-nowrap">Menu Item</th>
-                  <th className="p-4 text-right whitespace-nowrap">Price</th>
-                  <th className="p-4 text-center whitespace-nowrap">Status</th>
-                  <th className="p-4 text-center whitespace-nowrap">Action</th>
-                </tr>
-              </thead>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm border-collapse">
+                {/* Table Header */}
+                <thead>
+                  <tr className="border-b border-brand-light-green bg-[#F9FAFB]/50 text-[13px] font-medium text-brand-dark-green select-none">
+                    <th className="p-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <Clock size={16} className="text-brand-gray-neutral" />
+                        Time
+                      </div>
+                    </th>
+                    <th className="p-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <User size={16} className="text-brand-gray-neutral" />
+                        Employee Number
+                      </div>
+                    </th>
+                    <th className="p-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <UserCircle size={16} className="text-brand-gray-neutral" />
+                        Name
+                      </div>
+                    </th>
+                    <th className="p-4 whitespace-nowrap">Session</th>
+                    <th className="p-4 whitespace-nowrap">Meal</th>
+                    <th className="p-4 whitespace-nowrap">Drink</th>
+                    <th className="p-4 text-center whitespace-nowrap">Action</th>
+                  </tr>
+                </thead>
 
-              {/* Table Body */}
-              <tbody className="divide-y divide-gray-100">
-                {filteredTransactions.map(renderTransactionRow)}
-              </tbody>
-            </table>
-          </div>
+                {/* Table Body */}
+                <tbody className="divide-y divide-gray-100">
+                  {filteredTransactions.map(renderTransactionRow)}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* Pagination */}
+            {renderPagination()}
+          </>
         )}
       </div>
 
       {/* Correction Request Modal */}
       {selectedTxn && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-brand-white rounded-[12px] p-6 max-w-[480px] w-full border border-[rgba(50,100,50,0.15)] shadow-xl space-y-5">
+          <div className="bg-brand-white rounded-[12px] p-6 max-w-[480px] w-full border border-[rgba(50,100,50,0.15)] shadow-xl space-y-5 max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3 select-none">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3 select-none sticky top-0 bg-white z-10">
               <h3 className="text-brand-dark-green font-semibold text-[18px] flex items-center gap-2">
                 <PencilSimple size={20} className="text-brand-gold" />
                 New Correction Request
@@ -623,12 +811,6 @@ export const TodayTransactions: React.FC = () => {
             {/* Transaction Details */}
             <div className="bg-[#F9FAFB]/50 border border-gray-100 rounded-[8px] p-4 text-xs space-y-2 select-none">
               <div className="flex justify-between">
-                <span className="text-brand-gray-neutral font-medium">Transaction ID:</span>
-                <span className="font-mono text-brand-dark-green font-semibold">
-                  {selectedTxn.id?.substring(0, 12)}...
-                </span>
-              </div>
-              <div className="flex justify-between">
                 <span className="text-brand-gray-neutral font-medium">Employee Number:</span>
                 <span className="font-mono text-brand-dark-green font-semibold">
                   {selectedTxn.employeeNumber}
@@ -641,19 +823,27 @@ export const TodayTransactions: React.FC = () => {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-brand-gray-neutral font-medium">Original Selection:</span>
+                <span className="text-brand-gray-neutral font-medium">Original Meal:</span>
                 <span className="text-brand-error-red font-semibold line-through">
                   {selectedTxn.menuItem} ({(selectedTxn.menuPrice || 0).toFixed(2)} ETB)
                 </span>
               </div>
+              {selectedTxn.drinkItem && selectedTxn.drinkItem !== 'N/A' && selectedTxn.drinkItem !== null && (
+                <div className="flex justify-between">
+                  <span className="text-brand-gray-neutral font-medium">Original Drink:</span>
+                  <span className="text-brand-error-red font-semibold line-through">
+                    {selectedTxn.drinkItem} ({(selectedTxn.drinkPrice || 0).toFixed(2)} ETB)
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Correction Form */}
             <form onSubmit={handleSubmitCorrection} className="space-y-4">
-              {/* Menu Item Selection */}
+              {/* Correct Meal selector */}
               <div className="space-y-1.5">
                 <label className="block text-[13px] font-medium text-brand-dark-green">
-                  Correct Menu Item <span className="text-brand-error-red">*</span>
+                  Correct Meal <span className="text-brand-gray-neutral/60 text-xs">(Optional - skip to keep same)</span>
                 </label>
                 {isLoadingMenus ? (
                   <div className="h-[44px] flex items-center px-3 border border-gray-300 rounded-[8px] text-brand-gray-neutral text-sm">
@@ -661,12 +851,11 @@ export const TodayTransactions: React.FC = () => {
                   </div>
                 ) : (
                   <select
-                    required
                     value={requestedItemId}
                     onChange={(e) => setRequestedItemId(e.target.value)}
                     className="w-full h-[44px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer transition-colors"
                   >
-                    <option value="">-- Choose correct item --</option>
+                    <option value="">-- Keep current meal --</option>
                     {availableMenuItems.map((item) => (
                       <option key={item.id} value={item.id}>
                         {item.name} ({(item.currentPrice || 0).toFixed(2)} ETB)
@@ -676,12 +865,41 @@ export const TodayTransactions: React.FC = () => {
                 )}
                 {!isLoadingMenus && availableMenuItems.length === 0 && (
                   <p className="text-[11px] text-brand-error-red">
-                    No other active items found for this session.
+                    No other active meal items found for this session.
                   </p>
                 )}
-                {!isLoadingMenus && availableMenuItems.length > 0 && (
-                  <p className="text-[10px] text-brand-gray-neutral">
-                    Showing {availableMenuItems.length} items for {selectedTxn.mealSession}
+              </div>
+
+              {/* Correct Drink selector */}
+              <div className="space-y-1.5">
+                <label className="block text-[13px] font-medium text-brand-dark-green">
+                  Correct Drink <span className="text-brand-gray-neutral/60 text-xs">(Optional - skip to keep same)</span>
+                </label>
+                {isLoadingMenus ? (
+                  <div className="h-[44px] flex items-center px-3 border border-gray-300 rounded-[8px] text-brand-gray-neutral text-sm">
+                    Loading drink items...
+                  </div>
+                ) : (
+                  <select
+                    value={requestedDrinkId}
+                    onChange={(e) => setRequestedDrinkId(e.target.value)}
+                    className="w-full h-[44px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer transition-colors"
+                  >
+                    <option value="">-- Keep current drink --</option>
+                    {availableDrinkItems.length > 0 ? (
+                      availableDrinkItems.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name} ({(item.currentPrice || 0).toFixed(2)} ETB)
+                        </option>
+                      ))
+                    ) : (
+                      <option value="" disabled>No drinks available</option>
+                    )}
+                  </select>
+                )}
+                {!isLoadingMenus && availableDrinkItems.length === 0 && (
+                  <p className="text-[11px] text-brand-gray-neutral">
+                    No drink items available to select.
                   </p>
                 )}
               </div>
@@ -710,7 +928,7 @@ export const TodayTransactions: React.FC = () => {
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={isSubmitting || !requestedItemId || !reason.trim() || reason.trim().length < 10}
+                disabled={isSubmitting || !selectedTxn || (!requestedItemId && !requestedDrinkId) || !reason.trim() || reason.trim().length < 10}
                 className="w-full h-[48px] bg-brand-gold text-brand-white rounded-[8px] font-medium text-sm hover:opacity-90 transition disabled:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isSubmitting ? (
