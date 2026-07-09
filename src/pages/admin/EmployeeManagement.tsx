@@ -649,7 +649,7 @@ export const EmployeeManagement: React.FC = () => {
                     </div>
 
                     <div className="text-right flex flex-col items-end gap-1">
-                      <span className="text-[10px] font-mono text-brand-gray-neutral bg-gray-50 px-1 py-0.5 rounded border border-gray-100">
+                      <span className="text-[12px] font-mono text-brand-gray-neutral bg-gray-50 px-1 py-0.5 rounded border border-gray-100">
                         {empNum}
                       </span>
                       <div className="flex items-center gap-1">
