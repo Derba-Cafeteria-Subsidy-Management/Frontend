@@ -371,7 +371,9 @@ export const TodayTransactions: React.FC = () => {
             lowerDesc.includes('drink') ||
             lowerDesc.includes('beverage');
           
-          return item.mealtype === transaction.mealSession && 
+          return item.mealtype === "BREAKFAST" ||
+                 item.mealtype === "LUNCH" ||
+                 item.mealtype === "DINNER" && 
                  item.name !== transaction.menuItem && 
                  !isDrink;
         }
@@ -441,26 +443,70 @@ export const TodayTransactions: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const correctionData: any = {
-        transactionId: selectedTxn.id,
-        reason: reason.trim(),
-      };
+      // The API expects corrections to be submitted per item
+      // We need to send separate requests for meal and drink if both are selected
       
       if (requestedItemId) {
-        correctionData.newMenuItemId = requestedItemId;
+        // Find the meal item from the transaction's items array to get its transactionItemId
+        const mealTransactionItem = selectedTxn.items?.find((item: any) => {
+          const itemName = item?.menuItem?.name || item?.name || '';
+          const isDrink = 
+            itemName.toLowerCase().includes('drink') ||
+            itemName.toLowerCase().includes('juice') ||
+            itemName.toLowerCase().includes('soda') ||
+            itemName.toLowerCase().includes('water') ||
+            itemName.toLowerCase().includes('coffee') ||
+            itemName.toLowerCase().includes('tea') ||
+            itemName.toLowerCase().includes('milk') ||
+            itemName.toLowerCase().includes('smoothie');
+          return !isDrink;
+        });
+
+        if (mealTransactionItem?.id) {
+          const mealCorrectionData = {
+            transactionId: mealTransactionItem.id, // Use the transaction item ID
+            newMenuItemId: requestedItemId,
+            reason: reason.trim(),
+          };
+
+          await axiosInstance.post('/api/corrections', mealCorrectionData);
+        } else {
+          console.warn('Could not find meal transaction item ID');
+        }
       }
       
       if (requestedDrinkId) {
-        correctionData.newDrinkItemId = requestedDrinkId;
+        // Find the drink item from the transaction's items array to get its transactionItemId
+        const drinkTransactionItem = selectedTxn.items?.find((item: any) => {
+          const itemName = item?.menuItem?.name || item?.name || '';
+          const isDrink = 
+            itemName.toLowerCase().includes('drink') ||
+            itemName.toLowerCase().includes('juice') ||
+            itemName.toLowerCase().includes('soda') ||
+            itemName.toLowerCase().includes('water') ||
+            itemName.toLowerCase().includes('coffee') ||
+            itemName.toLowerCase().includes('tea') ||
+            itemName.toLowerCase().includes('milk') ||
+            itemName.toLowerCase().includes('smoothie');
+          return isDrink;
+        });
+
+        if (drinkTransactionItem?.id) {
+          const drinkCorrectionData = {
+            transactionId: drinkTransactionItem.id, // Use the transaction item ID
+            newMenuItemId: requestedDrinkId,
+            reason: reason.trim(),
+          };
+
+          await axiosInstance.post('/api/corrections', drinkCorrectionData);
+        } else {
+          console.warn('Could not find drink transaction item ID');
+        }
       }
 
-      const response = await axiosInstance.post('/api/corrections', correctionData);
-
-      if (response.data?.success) {
-        toast.success('Correction request submitted for admin review');
-        setSelectedTxn(null);
-        await fetchTodayTransactions();
-      }
+      toast.success('Correction request(s) submitted for admin review');
+      setSelectedTxn(null);
+      await fetchTodayTransactions();
     } catch (error) {
       console.error('Error submitting correction:', error);
       toast.error('Failed to submit correction request');

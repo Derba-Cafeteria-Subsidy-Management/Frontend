@@ -156,20 +156,57 @@ export const CorrectionRequests: React.FC = () => {
           ? response.data.data
           : response.data.data.transactions || [];
 
-        const mappedTransactions = list.map((transaction: any) => ({
-          id: transaction.id || transaction.transactionId,
-          employeeId: transaction.employeeNumber || transaction.employeeId || 'N/A',
-          employeeNumber: transaction.employeeNumber || transaction.employeeId || 'N/A',
-          fullName: transaction.fullName || transaction.employeeName || 'Unknown',
-          mealSession: transaction.mealSession || transaction.session || 'N/A',
-          menuItem: transaction.menuItem || transaction.menuItemName || 'N/A',
-          menuPrice: transaction.menuPrice || transaction.price || 0,
-          drinkItem: transaction.drinkItem || transaction.drinkItemName || null,
-          drinkPrice: transaction.drinkPrice || 0,
-          transactionDate: transaction.transactionDate,
-          createdAt: transaction.createdAt,
-          correctionStatus: transaction.correctionStatus || 'COMPLETE',
-        }));
+        const mappedTransactions = list.map((transaction: any) => {
+          // Extract meal and drink from items array
+          const items = transaction.items || [];
+          let mealItem: any = null;
+          let drinkItem: any = null;
+          let mealPrice = 0;
+          let drinkPrice = 0;
+          let mealName = 'N/A';
+          let drinkName: string | null = null;
+
+          if (items.length > 0) {
+            items.forEach((item: any) => {
+              const itemName = item?.menuItem?.name || item?.name || '';
+              const isDrink = 
+                itemName.toLowerCase().includes('drink') ||
+                itemName.toLowerCase().includes('juice') ||
+                itemName.toLowerCase().includes('soda') ||
+                itemName.toLowerCase().includes('water') ||
+                itemName.toLowerCase().includes('coffee') ||
+                itemName.toLowerCase().includes('tea') ||
+                itemName.toLowerCase().includes('milk') ||
+                itemName.toLowerCase().includes('smoothie');
+
+              if (isDrink) {
+                drinkItem = item;
+                drinkPrice = item.menuPrice || 0;
+                drinkName = itemName;
+              } else {
+                mealItem = item;
+                mealPrice = item.menuPrice || 0;
+                mealName = itemName;
+              }
+            });
+          }
+
+          return {
+            id: transaction.id || transaction.transactionId,
+            employeeId: transaction.employeeNumber || transaction.employeeId || 'N/A',
+            employeeNumber: transaction.employeeNumber || transaction.employeeId || 'N/A',
+            fullName: transaction.fullName || transaction.employeeName || 'Unknown',
+            mealSession: transaction.mealSession || transaction.session || 'N/A',
+            menuItem: mealName,
+            menuPrice: mealPrice,
+            drinkItem: drinkName,
+            drinkPrice: drinkPrice,
+            items: items, // Keep the full items array for accessing transaction item IDs
+            transactionDate: transaction.transactionDate,
+            createdAt: transaction.createdAt,
+            correctionStatus: transaction.correctionStatus || 'COMPLETE',
+          };
+        });
 
         // Filter out transactions with pending correction
         const eligible = mappedTransactions.filter(
@@ -233,7 +270,9 @@ export const CorrectionRequests: React.FC = () => {
                   lowerDesc.includes('drink') ||
                   lowerDesc.includes('beverage');
                 
-                return (item as any).mealtype === txn.mealSession && 
+                return (item as any).mealtype === "BREAKFAST" ||
+                       item.mealtype === "LUNCH" || 
+                       item.mealtype === "DINNER" && 
                        item.name !== txn.menuItem && 
                        !isDrink;
               }
@@ -309,27 +348,73 @@ export const CorrectionRequests: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      // Build correction payload
-      const correctionData: any = {
-        transactionId: selectedTxn.id,
-        reason: reason.trim(),
-      };
+      // The API expects corrections to be submitted per item
+      // We need to send separate requests for meal and drink if both are selected
+      const items = selectedTxn.items || [];
       
       if (requestedItemId) {
-        correctionData.newMenuItemId = requestedItemId;
+        // Find the meal item from the transaction's items array to get its transactionItemId
+        const mealTransactionItem = items.find((item: any) => {
+          const itemName = item?.menuItem?.name || item?.name || '';
+          const isDrink = 
+            itemName.toLowerCase().includes('drink') ||
+            itemName.toLowerCase().includes('juice') ||
+            itemName.toLowerCase().includes('soda') ||
+            itemName.toLowerCase().includes('water') ||
+            itemName.toLowerCase().includes('coffee') ||
+            itemName.toLowerCase().includes('tea') ||
+            itemName.toLowerCase().includes('milk') ||
+            itemName.toLowerCase().includes('smoothie');
+          return !isDrink;
+        });
+
+        if (mealTransactionItem?.id) {
+          const mealCorrectionData = {
+            transactionId: mealTransactionItem.id, // Use the transaction item ID
+            newMenuItemId: requestedItemId,
+            reason: reason.trim(),
+          };
+
+          await axiosInstance.post('/api/corrections', mealCorrectionData);
+        } else {
+          console.warn('Could not find meal transaction item ID');
+          toast.error('Could not find meal item in transaction');
+        }
       }
       
       if (requestedDrinkId) {
-        correctionData.newDrinkItemId = requestedDrinkId;
+        // Find the drink item from the transaction's items array to get its transactionItemId
+        const drinkTransactionItem = items.find((item: any) => {
+          const itemName = item?.menuItem?.name || item?.name || '';
+          const isDrink = 
+            itemName.toLowerCase().includes('drink') ||
+            itemName.toLowerCase().includes('juice') ||
+            itemName.toLowerCase().includes('soda') ||
+            itemName.toLowerCase().includes('water') ||
+            itemName.toLowerCase().includes('coffee') ||
+            itemName.toLowerCase().includes('tea') ||
+            itemName.toLowerCase().includes('milk') ||
+            itemName.toLowerCase().includes('smoothie');
+          return isDrink;
+        });
+
+        if (drinkTransactionItem?.id) {
+          const drinkCorrectionData = {
+            transactionId: drinkTransactionItem.id, // Use the transaction item ID
+            newMenuItemId: requestedDrinkId,
+            reason: reason.trim(),
+          };
+
+          await axiosInstance.post('/api/corrections', drinkCorrectionData);
+        } else {
+          console.warn('Could not find drink transaction item ID');
+          toast.error('Could not find drink item in transaction');
+        }
       }
 
-      const res = await axiosInstance.post('/api/corrections', correctionData);
-
-      if (res.data?.success) {
-        toast.success('Correction request submitted for admin review');
-        setShowWizard(false);
-        fetchRequests();
-      }
+      toast.success('Correction request(s) submitted for admin review');
+      setShowWizard(false);
+      fetchRequests();
     } catch (err) {
       console.error(err);
       toast.error('Failed to submit correction request');

@@ -46,11 +46,11 @@ export const Login: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="text-center space-y-2 select-none">
-        <div className="flex items-center justify-center gap-2">
+        <div className="flex items-center justify-center">
           <span className="text-brand-gold text-2xl font-bold font-mono">
-            <img width="50px" src={logo} alt="Derba logo" />
+            <img width="50px" src={logo} alt="Derba MIDROC Cement logo" />
           </span>
-          <span className="text-brand-dark-green font-bold text-2xl tracking-wide">Derba</span>
+          <span className="text-brand-dark-green font-bold text-[20px] tracking-wide">Derba MIDROC Cement</span>
         </div>
         <h2 className="text-[20px] font-semibold text-brand-dark-green font-sans">
           Cafeteria Management System

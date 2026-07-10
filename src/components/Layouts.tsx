@@ -12,8 +12,8 @@ import {
   Sliders,
   Database,
   Check,
-  WifiHigh,
-  WifiSlash
+  // WifiHigh,
+  // WifiSlash
 } from '@phosphor-icons/react';
 import logo from '../assets/logo.png';
 
@@ -37,8 +37,8 @@ export const CashierLayout: React.FC = () => {
   const {
     currentUser,
     logout,
-    isOffline,
-    setOfflineMode,
+    // isOffline,
+    // setOfflineMode,
     cashierStep,
     goToStep
   } = useApp();
@@ -75,11 +75,11 @@ export const CashierLayout: React.FC = () => {
         </div>
 
         {/* Center: Title / Context */}
-        <div className="hidden md:flex items-center gap-4">
-          <span className="text-brand-dark-green font-medium text-[18px]">Meal Registration</span>
+        {/* <div className="hidden md:flex items-center gap-4"> */}
+          {/* <span className="text-brand-dark-green font-medium text-[18px]">Meal Registration</span> */}
 
           {/* Simulated Offline Toggle */}
-          <button
+          {/* <button
             onClick={() => setOfflineMode(!isOffline)}
             className={`text-xs py-1 px-3 rounded-full border transition-all duration-200 flex items-center gap-1 ${isOffline
                 ? 'bg-brand-error-red/10 text-brand-error-red border-brand-error-red/30 hover:bg-brand-error-red/20'
@@ -88,18 +88,18 @@ export const CashierLayout: React.FC = () => {
           >
             {isOffline ? <WifiSlash size={14} /> : <WifiHigh size={14} />}
             <span>{isOffline ? 'Go Online' : 'Simulate Offline'}</span>
-          </button>
-        </div>
+          </button> */}
+        {/* </div> */}
 
         {/* Right: User + Status */}
         <div className="flex items-center gap-6">
           {/* Status Dot */}
-          <div className="flex items-center gap-2 text-sm">
+          {/* <div className="flex items-center gap-2 text-sm">
             <span className={`w-3 h-3 rounded-full ${isOffline ? 'bg-orange-500 animate-pulse' : 'bg-brand-dark-green'}`} />
             <span className={`font-medium ${isOffline ? 'text-orange-500' : 'text-brand-dark-green'}`}>
               {isOffline ? 'Offline' : 'Online'}
             </span>
-          </div>
+          </div> */}
 
           <div className="flex items-center gap-4">
             <span className="text-brand-dark-green text-sm font-medium">
