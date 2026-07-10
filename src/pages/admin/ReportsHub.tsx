@@ -927,7 +927,7 @@ export const ReportsHub: React.FC = () => {
                             {(row.employeeShare || row.empCost).toFixed(2)} ETB
                           </td>
                           <td className="p-4 text-right text-brand-dark-green font-bold font-mono">
-                            {(row.companyShare || row.compCost || (row.total * 0.60)).toFixed(2)} ETB
+                            {(row.totalMealCost - row.employeeShare || row.compCost || (row.totalMealCost * 0.60)).toFixed(2)} ETB
                           </td>
                         </tr>
                       ))}
