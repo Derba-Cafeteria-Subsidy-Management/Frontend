@@ -159,8 +159,6 @@ export const CorrectionRequests: React.FC = () => {
         const mappedTransactions = list.map((transaction: any) => {
           // Extract meal and drink from items array
           const items = transaction.items || [];
-          let mealItem: any = null;
-          let drinkItem: any = null;
           let mealPrice = 0;
           let drinkPrice = 0;
           let mealName = 'N/A';
@@ -180,11 +178,9 @@ export const CorrectionRequests: React.FC = () => {
                 itemName.toLowerCase().includes('smoothie');
 
               if (isDrink) {
-                drinkItem = item;
                 drinkPrice = item.menuPrice || 0;
                 drinkName = itemName;
               } else {
-                mealItem = item;
                 mealPrice = item.menuPrice || 0;
                 mealName = itemName;
               }
