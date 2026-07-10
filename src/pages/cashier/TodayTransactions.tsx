@@ -177,18 +177,56 @@ export const TodayTransactions: React.FC = () => {
   /**
    * Get the status badge style for a transaction
    */
-  // const getStatusBadge = (isCorrected: boolean) => {
-  //   if (isCorrected) {
-  //     return {
-  //       className: 'bg-brand-warning/10 text-brand-warning',
-  //       label: 'Pending Adjudication',
-  //     };
-  //   }
-  //   return {
-  //     className: 'bg-brand-dark-green/10 text-brand-dark-green',
-  //     label: 'Complete',
-  //   };
-  // };
+  const getStatusBadge = (correctionStatus: string) => {
+    if (correctionStatus === 'PENDING_CORRECTION') {
+      return {
+        className: 'bg-brand-warning/10 text-brand-warning',
+        label: 'Pending Adjudication',
+      };
+    }
+    return {
+      className: 'bg-brand-dark-green/10 text-brand-dark-green',
+      label: 'Complete',
+    };
+  };
+
+  /**
+   * Extract meal and drink from items array
+   */
+  const extractItems = (items: any[]) => {
+    let mealItem: any = null;
+    let drinkItem: any = null;
+    let mealPrice = 0;
+    let drinkPrice = 0;
+
+    if (items && Array.isArray(items) && items.length > 0) {
+      items.forEach((item: any) => {
+        // Get the item name - could be in item.menuItem.name or item.name
+        const itemName = item?.menuItem?.name || item?.name || '';
+        
+        // Check if it's a drink based on name
+        const isDrink = 
+          itemName.toLowerCase().includes('drink') ||
+          itemName.toLowerCase().includes('juice') ||
+          itemName.toLowerCase().includes('soda') ||
+          itemName.toLowerCase().includes('water') ||
+          itemName.toLowerCase().includes('coffee') ||
+          itemName.toLowerCase().includes('tea') ||
+          itemName.toLowerCase().includes('milk') ||
+          itemName.toLowerCase().includes('smoothie');
+
+        if (isDrink) {
+          drinkItem = item;
+          drinkPrice = item.menuPrice || 0;
+        } else {
+          mealItem = item;
+          mealPrice = item.menuPrice || 0;
+        }
+      });
+    }
+
+    return { mealItem, drinkItem, mealPrice, drinkPrice };
+  };
 
   /**
    * Fetch today's transactions from the backend with date filtering
@@ -228,20 +266,36 @@ export const TodayTransactions: React.FC = () => {
         setTotalItems(total);
         setTotalPages(totalPg);
 
-        const mappedTransactions = list.map((transaction: any) => ({
-          id: transaction.id || transaction.transactionId,
-          employeeId: transaction.employeeNumber || transaction.employeeId || 'N/A',
-          employeeNumber: transaction.employeeNumber || transaction.employeeId || 'N/A',
-          fullName: transaction.fullName || transaction.employeeName || 'Unknown',
-          mealSession: transaction.mealSession || transaction.session || 'N/A',
-          menuItem: transaction.menuItem || transaction.menuItemName || 'N/A',
-          menuPrice: transaction.menuPrice || transaction.price || 0,
-          drinkItem: transaction.drinkItem || transaction.drinkItemName || null,
-          drinkPrice: transaction.drinkPrice || 0,
-          transactionDate: transaction.transactionDate,
-          createdAt: transaction.createdAt,
-          correctionStatus: transaction.correctionStatus || 'COMPLETE',
-        }));
+        const mappedTransactions = list.map((transaction: any) => {
+          // Extract meal and drink from items array
+          const { mealItem, drinkItem, mealPrice, drinkPrice } = extractItems(transaction.items || []);
+          
+          // Get the names safely with type assertions
+          const mealName = (mealItem as any)?.menuItem?.name || (mealItem as any)?.name || 'N/A';
+          const drinkName = (drinkItem as any)?.menuItem?.name || (drinkItem as any)?.name || null;
+          
+          return {
+            id: transaction.id || transaction.transactionId,
+            employeeId: transaction.employeeId || 'N/A',
+            employeeNumber: transaction.employeeNumber || 'N/A',
+            fullName: transaction.fullName || 'Unknown',
+            mealSession: transaction.mealSession || 'N/A',
+            // Meal info
+            menuItem: mealName,
+            menuPrice: mealPrice || 0,
+            // Drink info
+            drinkItem: drinkName,
+            drinkPrice: drinkPrice || 0,
+            // Other fields
+            items: transaction.items || [],
+            totalMenuPrice: transaction.totalMenuPrice || 0,
+            totalEmployeeShare: transaction.totalEmployeeShare || 0,
+            totalCompanyShare: transaction.totalCompanyShare || 0,
+            transactionDate: transaction.transactionDate,
+            createdAt: transaction.createdAt,
+            correctionStatus: transaction.correctionStatus || 'COMPLETE',
+          };
+        });
 
         setAllTransactions(mappedTransactions);
         applyFilters(mappedTransactions, filterSession, searchTerm);
@@ -599,9 +653,9 @@ export const TodayTransactions: React.FC = () => {
   const renderTransactionRow = (transaction: any) => {
     const timeStr = formatTime(transaction.createdAt || transaction.transactionDate);
     const dateStr = formatDate(transaction.transactionDate, transaction.createdAt);
-    const isCorrected = transaction.correctionStatus === 'PENDING_CORRECTION';
-    // const statusBadge = getStatusBadge(isCorrected);
+    const statusBadge = getStatusBadge(transaction.correctionStatus);
     const hasDrink = transaction.drinkItem && transaction.drinkItem !== 'N/A' && transaction.drinkItem !== null;
+    const isPending = transaction.correctionStatus === 'PENDING_CORRECTION';
 
     return (
       <tr
@@ -654,11 +708,8 @@ export const TodayTransactions: React.FC = () => {
         <td className="p-4">
           {hasDrink ? (
             <div className="flex flex-col">
-              <div className="flex items-center gap-1.5">
-                <span className="text-lg">🥤</span>
-                <span className="text-brand-dark-green font-medium">{transaction.drinkItem}</span>
-              </div>
-              <span className="text-[11px] text-brand-gray-neutral ml-7">
+              <span className="text-brand-dark-green font-medium">{transaction.drinkItem}</span>
+              <span className="text-[11px] text-brand-gray-neutral">
                 {(transaction.drinkPrice || 0).toFixed(2)} ETB
               </span>
             </div>
@@ -667,9 +718,18 @@ export const TodayTransactions: React.FC = () => {
           )}
         </td>
 
+        {/* Status Column */}
+        <td className="p-4 text-center">
+          <span
+            className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${statusBadge.className}`}
+          >
+            {statusBadge.label}
+          </span>
+        </td>
+
         {/* Action Column */}
         <td className="p-4 text-center">
-          {!isCorrected ? (
+          {!isPending ? (
             <button
               onClick={() => handleOpenCorrectionModal(transaction)}
               className="inline-flex items-center gap-1.5 text-brand-gold font-medium hover:underline text-xs transition-colors"
@@ -773,6 +833,7 @@ export const TodayTransactions: React.FC = () => {
                     <th className="p-4 whitespace-nowrap">Session</th>
                     <th className="p-4 whitespace-nowrap">Meal</th>
                     <th className="p-4 whitespace-nowrap">Drink</th>
+                    <th className="p-4 text-center whitespace-nowrap">Status</th>
                     <th className="p-4 text-center whitespace-nowrap">Action</th>
                   </tr>
                 </thead>
@@ -823,6 +884,12 @@ export const TodayTransactions: React.FC = () => {
                 </span>
               </div>
               <div className="flex justify-between">
+                <span className="text-brand-gray-neutral font-medium">Session:</span>
+                <span className="text-brand-dark-green font-semibold uppercase">
+                  {selectedTxn.mealSession}
+                </span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-brand-gray-neutral font-medium">Original Meal:</span>
                 <span className="text-brand-error-red font-semibold line-through">
                   {selectedTxn.menuItem} ({(selectedTxn.menuPrice || 0).toFixed(2)} ETB)
@@ -836,6 +903,12 @@ export const TodayTransactions: React.FC = () => {
                   </span>
                 </div>
               )}
+              <div className="flex justify-between">
+                <span className="text-brand-gray-neutral font-medium">Total Price:</span>
+                <span className="text-brand-dark-green font-semibold">
+                  {(selectedTxn.totalMenuPrice || 0).toFixed(2)} ETB
+                </span>
+              </div>
             </div>
 
             {/* Correction Form */}

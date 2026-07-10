@@ -121,15 +121,20 @@ export const MenuManagement: React.FC = () => {
 
       if (res.data?.success && res.data?.data) {
         const list = Array.isArray(res.data.data) ? res.data.data : res.data.data.data || [];
-        setMenuItems(list);
+        // ✅ Safely map items with fallback for currentPrice
+        const safeList = list.map((item: any) => ({
+          ...item,
+          currentPrice: item.currentPrice ?? item.price ?? 0,
+        }));
+        setMenuItems(safeList);
 
         const pagination = res.data.data.pagination;
         if (pagination) {
-          setTotalItems(pagination.totalCount || list.length);
-          setTotalPages(pagination.totalPages || Math.ceil((pagination.totalCount || list.length) / limit));
+          setTotalItems(pagination.totalCount || safeList.length);
+          setTotalPages(pagination.totalPages || Math.ceil((pagination.totalCount || safeList.length) / limit));
         } else {
-          setTotalItems(list.length);
-          setTotalPages(Math.ceil(list.length / limit));
+          setTotalItems(safeList.length);
+          setTotalPages(Math.ceil(safeList.length / limit));
         }
       } else {
         setMenuItems([]);
@@ -228,7 +233,7 @@ export const MenuManagement: React.FC = () => {
     const originalItem = { ...item };
     const newStatus = !item.active;
 
-    // ✅ Optimistic update - update UI immediately
+    // Optimistic update - update UI immediately
     setMenuItems(prev =>
       prev.map(i => i.id === item.id ? { ...i, active: newStatus } : i)
     );
@@ -241,12 +246,10 @@ export const MenuManagement: React.FC = () => {
       });
 
       toast.success(`${item.name} is now ${newStatus ? 'Active' : 'Inactive'}`);
-      // ✅ Update total counts without full reload
-      // No need to fetch - state is already updated
     } catch (err) {
       console.error('Error toggling status:', err);
       toast.error('Failed to update item status.');
-      // ✅ Revert optimistic update on error
+      // Revert optimistic update on error
       setMenuItems(prev =>
         prev.map(i => i.id === item.id ? originalItem : i)
       );
@@ -254,7 +257,7 @@ export const MenuManagement: React.FC = () => {
   };
 
   /**
-   * Create a new menu item - Optimistic Update
+   * Create a new menu item - Optimistic Update with seamless UI
    */
   const handleCreateItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,8 +281,9 @@ export const MenuManagement: React.FC = () => {
       });
 
       if (res.data?.success) {
+        // Get the created item from response or create a local one
         const newItem = res.data.data || {
-          id: Date.now().toString(),
+          id: `temp-${Date.now()}`,
           name: newItemName.trim(),
           description: newItemDescription.trim() || undefined,
           mealtype: newItemMealtype,
@@ -287,19 +291,31 @@ export const MenuManagement: React.FC = () => {
           active: true
         };
 
-        // ✅ Optimistic update - add to list immediately
-        setMenuItems(prev => [newItem, ...prev]);
+        // ✅ Ensure currentPrice is always set
+        const safeNewItem = {
+          ...newItem,
+          currentPrice: newItem.currentPrice ?? priceNum ?? 0,
+        };
+
+        // ✅ Seamless update - add to list without clearing existing items
+        setMenuItems(prev => {
+          // Check if item already exists (prevent duplicates)
+          const exists = prev.some(item => item.id === safeNewItem.id);
+          if (exists) return prev;
+          return [safeNewItem, ...prev];
+        });
+        
         setTotalItems(prev => prev + 1);
-        setTotalPages(Math.ceil((totalItems + 1) / limit));
+        // Recalculate total pages
+        const newTotalPages = Math.ceil((totalItems + 1) / limit);
+        setTotalPages(newTotalPages);
 
         toast.success(`${newItemName} added to menu!`);
         setShowAddModal(false);
         setNewItemName('');
         setNewItemDescription('');
         setNewItemPrice('');
-
-        // ✅ If we're on the last page and it's full, we might need to fetch
-        // But for simplicity, we just add to the beginning
+        setNewItemMealtype('BREAKFAST');
       }
     } catch (err: any) {
       console.error('Error creating menu item:', err);
@@ -321,10 +337,9 @@ export const MenuManagement: React.FC = () => {
       return;
     }
 
-    // ✅ Save original for rollback
     const originalItem = { ...editingItem };
 
-    // ✅ Optimistic update - update UI immediately
+    // Optimistic update - update UI immediately
     setMenuItems(prev =>
       prev.map(i =>
         i.id === editingItem.id
@@ -354,7 +369,7 @@ export const MenuManagement: React.FC = () => {
     } catch (err: any) {
       console.error('Error updating menu item:', err);
       toast.error(err.response?.data?.message || 'Failed to update menu item');
-      // ✅ Revert optimistic update on error
+      // Revert optimistic update on error
       setMenuItems(prev =>
         prev.map(i => i.id === originalItem.id ? originalItem : i)
       );
@@ -378,10 +393,9 @@ export const MenuManagement: React.FC = () => {
       return;
     }
 
-    // ✅ Save original for rollback
     const originalItem = { ...selectedItem };
 
-    // ✅ Optimistic update - update UI immediately
+    // Optimistic update - update UI immediately
     setMenuItems(prev =>
       prev.map(i =>
         i.id === selectedItem.id
@@ -411,7 +425,7 @@ export const MenuManagement: React.FC = () => {
     } catch (err: any) {
       console.error('Error updating price:', err);
       toast.error(err.response?.data?.message || 'Failed to update price');
-      // ✅ Revert optimistic update on error
+      // Revert optimistic update on error
       setMenuItems(prev =>
         prev.map(i => i.id === originalItem.id ? originalItem : i)
       );
@@ -426,13 +440,13 @@ export const MenuManagement: React.FC = () => {
   const handleDeleteItem = async () => {
     if (!itemToDelete) return;
 
-    // ✅ Save for rollback
     const deletedItem = { ...itemToDelete };
 
-    // ✅ Optimistic update - remove from UI immediately
+    // Optimistic update - remove from UI immediately
     setMenuItems(prev => prev.filter(i => i.id !== itemToDelete.id));
     setTotalItems(prev => Math.max(0, prev - 1));
-    setTotalPages(Math.ceil(Math.max(0, totalItems - 1) / limit));
+    const newTotalPages = Math.ceil(Math.max(0, totalItems - 1) / limit);
+    setTotalPages(newTotalPages);
 
     setIsSubmitting(true);
     try {
@@ -440,11 +454,16 @@ export const MenuManagement: React.FC = () => {
       if (res.data?.success) {
         toast.success(`${itemToDelete.name} deleted successfully.`);
         setItemToDelete(null);
+        // If current page has no items and we're not on page 1, go to previous page
+        if (menuItems.length === 1 && currentPage > 1) {
+          setCurrentPage(currentPage - 1);
+          fetchMenuItems(currentPage - 1, searchTerm);
+        }
       }
     } catch (err: any) {
       console.error('Error deleting menu item:', err);
       toast.error(err.response?.data?.message || 'Failed to delete menu item');
-      // ✅ Revert optimistic update on error
+      // Revert optimistic update on error
       setMenuItems(prev => [...prev, deletedItem].sort((a, b) => a.name.localeCompare(b.name)));
       setTotalItems(prev => prev + 1);
       setTotalPages(Math.ceil((totalItems + 1) / limit));
@@ -602,7 +621,7 @@ export const MenuManagement: React.FC = () => {
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
-        // ✅ Refresh the list after import
+        // Refresh the list after import
         fetchMenuItems(currentPage, searchTerm);
       } else {
         toast.error(res.data?.message || 'Failed to confirm import');
@@ -656,7 +675,7 @@ export const MenuManagement: React.FC = () => {
       {/* ======================================================================
           HEADER
           ====================================================================== */}
-      <div className="flex items-center justify-between border-b border-brand-light-green/30 pb-4 select-none">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-brand-light-green/30 pb-4 select-none gap-4">
         <div>
           <h1 className="text-[28px] font-semibold text-brand-dark-green font-sans leading-none">
             Menu Management
@@ -666,7 +685,7 @@ export const MenuManagement: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() => setShowImportModal(true)}
             className="h-[44px] bg-brand-light-green/30 text-brand-dark-green px-5 rounded-[8px] text-sm font-medium hover:bg-brand-light-green/50 transition flex items-center gap-2 shadow-sm border border-brand-light-green"
@@ -711,7 +730,7 @@ export const MenuManagement: React.FC = () => {
           MENU ITEMS GRID
           ====================================================================== */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4 sm:gap-6">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="h-32 bg-gray-50 border border-gray-100 animate-pulse rounded-[12px]" />
           ))}
@@ -727,27 +746,29 @@ export const MenuManagement: React.FC = () => {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4 sm:gap-6">
             {menuItems.map((item) => {
               const isActive = item.active !== false;
+              // ✅ Safe price access with fallback to 0
+              const price = item.currentPrice ?? 0;
               return (
                 <div
                   key={item.id}
-                  className={`bg-brand-white border rounded-[12px] p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between group ${
+                  className={`bg-brand-white border rounded-[12px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between group ${
                     isActive
                       ? 'border-[rgba(50,100,50,0.1)]'
                       : 'border-red-200 bg-red-50/30'
                   }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1.5 flex-1 font-sans">
-                      <div className="flex items-center gap-2">
-                        <h3 className={`font-bold text-lg leading-tight ${
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div className="space-y-1.5 flex-1 font-sans min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className={`font-bold text-base sm:text-lg leading-tight truncate ${
                           isActive ? 'text-brand-dark-green' : 'text-gray-500'
                         }`}>
                           {item.name}
                         </h3>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase whitespace-nowrap ${
                           isActive
                             ? 'bg-brand-light-green/30 text-brand-dark-green'
                             : 'bg-gray-200 text-gray-500'
@@ -755,13 +776,13 @@ export const MenuManagement: React.FC = () => {
                           {item.mealtype}
                         </span>
                         {!isActive && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-red-100 text-red-600">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-red-100 text-red-600 whitespace-nowrap">
                             Inactive
                           </span>
                         )}
                       </div>
                       {item.description && (
-                        <p className={`text-sm leading-relaxed ${
+                        <p className={`text-sm leading-relaxed line-clamp-2 ${
                           isActive ? 'text-brand-gray-neutral' : 'text-gray-400'
                         }`}>
                           {item.description}
@@ -769,7 +790,7 @@ export const MenuManagement: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2 ml-4 shrink-0">
+                    <div className="flex items-center gap-1 sm:gap-2 shrink-0 self-start sm:self-auto">
                       {/* Price History Button */}
                       <button
                         onClick={() => {
@@ -820,7 +841,7 @@ export const MenuManagement: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className={`border-t pt-4 mt-4 flex items-center justify-between select-none ${
+                  <div className={`border-t pt-3 sm:pt-4 mt-3 sm:mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 select-none ${
                     isActive ? 'border-gray-100' : 'border-gray-200'
                   }`}>
                     <div>
@@ -829,17 +850,17 @@ export const MenuManagement: React.FC = () => {
                       }`}>
                         Price rate
                       </span>
-                      <span className={`font-bold text-[18px] ${
+                      <span className={`font-bold text-[16px] sm:text-[18px] ${
                         isActive ? 'text-brand-dark-green' : 'text-gray-500'
                       }`}>
-                        {item.currentPrice.toFixed(2)} <span className="text-xs font-medium">ETB</span>
+                        {price.toFixed(2)} <span className="text-xs font-medium">ETB</span>
                       </span>
                     </div>
 
                     <button
                       onClick={() => {
                         setSelectedItem(item);
-                        setNewPrice(item.currentPrice.toString());
+                        setNewPrice(price.toString());
                         setEffectiveFrom(new Date().toISOString().split('T')[0]);
                       }}
                       className={`text-sm font-semibold hover:underline flex items-center gap-1 ${
@@ -856,15 +877,15 @@ export const MenuManagement: React.FC = () => {
 
           {/* Pagination */}
           {totalItems > 0 && (
-            <div className="border-t border-gray-100 p-4 flex items-center justify-between select-none bg-gray-50/50 rounded-b-[12px]">
-              <span className="text-[11px] text-brand-gray-neutral">
+            <div className="border-t border-gray-100 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 select-none bg-gray-50/50 rounded-b-[12px]">
+              <span className="text-[11px] text-brand-gray-neutral text-center sm:text-left">
                 {menuItems.length > 0 ? (
                   <>Showing {(currentPage - 1) * limit + 1} - {Math.min(currentPage * limit, totalItems)} of {totalItems} items</>
                 ) : (
                   <>0 of {totalItems}</>
                 )}
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center sm:justify-end gap-2">
                 <button
                   onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage === 1 || loading}
@@ -893,8 +914,8 @@ export const MenuManagement: React.FC = () => {
           ====================================================================== */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-brand-white rounded-[12px] p-6 max-w-[440px] w-full border border-[rgba(50,100,50,0.15)] shadow-xl space-y-5">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3 select-none">
+          <div className="bg-brand-white rounded-[12px] p-6 max-w-[440px] w-full border border-[rgba(50,100,50,0.15)] shadow-xl space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3 select-none sticky top-0 bg-white z-10">
               <h3 className="text-brand-dark-green font-semibold text-[18px]">
                 Add Menu Item
               </h3>
@@ -954,8 +975,7 @@ export const MenuManagement: React.FC = () => {
                 <label className="block text-[13px] font-medium text-brand-dark-green">
                   Initial Price (ETB) <span className="text-brand-error-red">*</span>
                 </label>
-                <input
-                  type="number"
+                <input                  type="number"
                   step="0.01"
                   required
                   placeholder="e.g. 95.00"
@@ -1091,7 +1111,7 @@ export const MenuManagement: React.FC = () => {
               </div>
               <div className="flex justify-between">
                 <span className="text-brand-gray-neutral">Current Price:</span>
-                <span className="text-brand-dark-green font-semibold">{selectedItem.currentPrice.toFixed(2)} ETB</span>
+                <span className="text-brand-dark-green font-semibold">{(selectedItem.currentPrice ?? 0).toFixed(2)} ETB</span>
               </div>
             </div>
 
@@ -1254,7 +1274,7 @@ export const MenuManagement: React.FC = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-brand-gray-neutral">Current Price:</span>
-                  <span className="text-brand-dark-green font-semibold">{itemToDelete.currentPrice.toFixed(2)} ETB</span>
+                  <span className="text-brand-dark-green font-semibold">{(itemToDelete.currentPrice ?? 0).toFixed(2)} ETB</span>
                 </div>
               </div>
             </div>
@@ -1347,7 +1367,7 @@ export const MenuManagement: React.FC = () => {
                 </label>
 
                 {importStats && (
-                  <div className="mt-3 flex items-center justify-center gap-4 text-xs">
+                  <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-xs">
                     <span className="text-brand-dark-green bg-brand-light-green/20 px-3 py-1.5 rounded-full inline-flex items-center gap-2">
                       <FileCsv size={14} className="text-brand-gold" />
                       <span>{importStats.totalRows} rows total</span>
@@ -1369,7 +1389,7 @@ export const MenuManagement: React.FC = () => {
               </div>
 
               {/* Template Download */}
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
                 <button
                   onClick={downloadTemplate}
                   className="text-brand-gold text-sm font-semibold hover:underline flex items-center gap-1"
@@ -1399,14 +1419,14 @@ export const MenuManagement: React.FC = () => {
                     {importData.slice(0, 5).map((row, index) => (
                       <div key={index} className="flex items-center gap-2 border-b border-gray-50 py-1">
                         <span className="text-brand-gray-neutral w-6">{index + 1}.</span>
-                        <span className="font-medium text-brand-dark-green">
+                        <span className="font-medium text-brand-dark-green truncate max-w-[120px] sm:max-w-[200px]">
                           {row.name || 'Unknown'}
                         </span>
                         <span className="text-brand-gray-neutral">-</span>
-                        <span className="text-brand-dark-green font-semibold">
+                        <span className="text-brand-dark-green font-semibold whitespace-nowrap">
                           {row.price ? `${parseFloat(row.price).toFixed(2)} ETB` : 'N/A'}
                         </span>
-                        <span className="bg-brand-light-green/30 text-brand-dark-green text-[10px] px-1.5 rounded font-bold uppercase">
+                        <span className="bg-brand-light-green/30 text-brand-dark-green text-[10px] px-1.5 rounded font-bold uppercase whitespace-nowrap">
                           {row.mealtype || 'LUNCH'}
                         </span>
                       </div>
@@ -1436,7 +1456,7 @@ export const MenuManagement: React.FC = () => {
               )}
 
               {/* Actions */}
-              <div className="flex gap-3 pt-2 border-t border-gray-100">
+              <div className="flex flex-col sm:flex-row gap-3 pt-2 border-t border-gray-100">
                 <button
                   onClick={() => {
                     setShowImportModal(false);
