@@ -155,11 +155,7 @@ export const CashierFlow: React.FC = () => {
 
   const [countdown, setCountdown] = useState(5);
 
-  // ==========================================================================
-  // UI SETTINGS
-  // ==========================================================================
-
-  const [allowManualId] = useState(true);
+  const [employeeSearchEnabled, setEmployeeSearchEnabled] = useState(true);
 
   // ==========================================================================
   // LIFECYCLE EFFECTS
@@ -175,14 +171,23 @@ export const CashierFlow: React.FC = () => {
     };
   }, []);
 
-  /**
-   * Load manual ID setting from local storage
-   */
   useEffect(() => {
-    const savedSetting = localStorage.getItem('allow_manual_id');
-    if (savedSetting !== null) {
-      // setAllowManualId(savedSetting === 'true');
-    }
+    const fetchAuthSettings = async () => {
+      try {
+        const res = await axiosInstance.get('/api/system-settings/authentication');
+        
+        if (!isMountedRef.current) return;
+
+        if (res.data?.success && res.data?.data) {
+          setEmployeeSearchEnabled(res.data.data.employeeSearchEnabled ?? true);
+        }
+      } catch (error) {
+        console.error('Failed to fetch authentication settings:', error);
+        // Keep default values if API fails
+      }
+    };
+
+    fetchAuthSettings();
   }, []);
 
   /**
@@ -886,7 +891,7 @@ export const CashierFlow: React.FC = () => {
               </p>
             </div>
 
-            {allowManualId ? (
+            {employeeSearchEnabled ? (
               <form onSubmit={handleManualLookup} className="space-y-4 my-auto">
                 <div className="space-y-1.5">
                   <label className="block text-[11px] font-semibold text-brand-dark-green uppercase">Employee ID</label>
@@ -920,7 +925,7 @@ export const CashierFlow: React.FC = () => {
             ) : (
               <div className="my-auto border border-dashed border-gray-200 rounded-[8px] p-6 text-center text-xs text-brand-gray-neutral">
                 <WarningCircle size={28} className="mx-auto mb-2 text-brand-gray-neutral" />
-                Manual ID entry is disabled by administrative policy. Use Biometric Scan.
+                Manual ID entry is disabled by system settings. Use Biometric Scan.
               </div>
             )}
 
