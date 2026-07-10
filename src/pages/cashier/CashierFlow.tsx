@@ -731,6 +731,7 @@ export const CashierFlow: React.FC = () => {
 
   /**
    * Submit transaction to backend
+   * Updated to match the new API format with items array
    */
   const handleSubmitTransaction = async () => {
     if (!selectedEmployee || !selectedSession || !selectedMenu) {
@@ -741,11 +742,26 @@ export const CashierFlow: React.FC = () => {
     try {
       const mealSession = selectedSession.toUpperCase() as MealSession;
 
+      // Build items array with quantity 1 for each selected item
+      const items = [
+        {
+          menuItemId: selectedMenu.id,
+          quantity: 1
+        }
+      ];
+
+      // Add drink if selected
+      if (selectedDrink) {
+        items.push({
+          menuItemId: selectedDrink.id,
+          quantity: 1
+        });
+      }
+
       const transactionData = {
         employeeId: selectedEmployee.id,
         mealSession: mealSession,
-        menuItemId: selectedMenu.id,
-        drinkItemId: selectedDrink?.id || null,
+        items: items
       };
 
       console.log('Submitting transaction:', transactionData);
