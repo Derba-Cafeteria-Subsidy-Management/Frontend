@@ -140,16 +140,6 @@ export const CashierLayout: React.FC = () => {
             Correction Requests
           </Link>
         </div>
-
-        {/* Simple redirection helper back to dashboards if login role warrants */}
-        {currentUser && currentUser.role !== 'CASHIER' && (
-          <Link
-            to={currentUser.role === 'ADMIN' ? '/admin' : '/super-admin/subsidy'}
-            className="text-xs text-brand-dark-green underline hover:text-brand-gold"
-          >
-            Go to {currentUser.role} Panel
-          </Link>
-        )}
       </div>
 
       {/* Step Indicator (Only for Meal Registration Workflow) */}
@@ -288,14 +278,6 @@ const BaseAdminLayout: React.FC<SidebarProps> = ({ title, navItems }) => {
           </div>
 
           <div className="pt-2 flex flex-col gap-1.5">
-            {/* Quick terminal redirection */}
-            <Link
-              to="/cashier"
-              className="text-xs text-center border border-brand-dark-green text-brand-dark-green hover:bg-brand-dark-green hover:text-brand-white transition py-1 rounded font-medium"
-            >
-              Open Cashier Terminal
-            </Link>
-
             <button
               onClick={handleLogout}
               className="flex items-center justify-center gap-2 w-full py-2 px-3 text-xs font-medium border border-brand-error-red/20 text-brand-error-red rounded hover:bg-brand-error-red/5 transition-colors"

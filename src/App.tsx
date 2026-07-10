@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from './context/AppContext';
 import { Toaster } from 'react-hot-toast';
 
@@ -48,6 +48,18 @@ const AuthLoadingScreen: React.FC = () => (
   </div>
 );
 
+/** Redirects to the home page for the user's own role. */
+const getHomeForRole = (role: string) => {
+  if (role === 'Admin') return '/admin';
+  if (role === 'Super Admin') return '/super-admin';
+  return '/cashier';
+};
+
+/**
+ * Guards a route by role.
+ * - Not logged in  → /login
+ * - Wrong role     → user's own home (strict: no cross-role access)
+ */
 const ProtectedRoute: React.FC<{
   children: React.ReactNode;
   allowedRoles: AppRole[];
@@ -63,13 +75,32 @@ const ProtectedRoute: React.FC<{
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  if (!allowedRoles.includes(currentUser.role as any)) {
-    if (currentUser.role === 'CASHIER') return <Navigate to="/cashier" replace />;
-    if (currentUser.role === 'ADMIN') return <Navigate to="/admin" replace />;
-    if (currentUser.role === 'SUPER_ADMIN') return <Navigate to="/super-admin" replace />;
+  // currentUser.role is already the mapped friendly string ('Cashier' | 'Admin' | 'Super Admin')
+  if (!allowedRoles.includes(currentUser.role as AppRole)) {
+    return <Navigate to={getHomeForRole(currentUser.role)} replace />;
   }
 
   return <>{children}</>;
+};
+
+/**
+ * Listens for the global 'auth:expired' event fired by the axios interceptor
+ * when a 401 cannot be recovered via refresh, then redirects to /login.
+ */
+const SessionExpiryHandler: React.FC = () => {
+  const { logout } = useApp();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleExpiry = async () => {
+      await logout();
+      navigate('/login', { replace: true });
+    };
+    window.addEventListener('auth:expired', handleExpiry);
+    return () => window.removeEventListener('auth:expired', handleExpiry);
+  }, [logout, navigate]);
+
+  return null;
 };
 
 const RootRedirector: React.FC = () => {
@@ -136,7 +167,8 @@ function App() {
         <Route
           path="/cashier"
           element={
-            <ProtectedRoute allowedRoles={['Cashier', 'Admin', 'Super Admin']}>
+            // Cashier-only — Admins and Super Admins must use their own portals
+            <ProtectedRoute allowedRoles={['Cashier']}>
               <CashierLayout />
             </ProtectedRoute>
           }
@@ -149,7 +181,8 @@ function App() {
         <Route
           path="/admin"
           element={
-            <ProtectedRoute allowedRoles={['Admin', 'Super Admin']}>
+            // Admin-only — Super Admins use /super-admin, Cashiers are redirected away
+            <ProtectedRoute allowedRoles={['Admin']}>
               <AdminLayout />
             </ProtectedRoute>
           }
@@ -179,6 +212,7 @@ function App() {
         <Route path="/" element={<RootRedirector />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <SessionExpiryHandler />
     </BrowserRouter>
   );
 }
