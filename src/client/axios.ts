@@ -92,7 +92,7 @@ axiosInstance.interceptors.response.use(
       if (!refreshToken) {
         clearTokens();
         isRefreshing = false;
-        toast.error('Session expired. Please log in again.');
+        window.dispatchEvent(new CustomEvent('auth:expired'));
         return Promise.reject(error);
       }
 
@@ -118,8 +118,8 @@ axiosInstance.interceptors.response.use(
         processQueue(refreshError, null);
         clearTokens();
         isRefreshing = false;
-        toast.error('Session expired. Please log in again.');
-        // Optional redirect to login can be handled by app routing context
+        // Dispatch global event so the React SessionExpiryHandler redirects to /login
+        window.dispatchEvent(new CustomEvent('auth:expired'));
         return Promise.reject(refreshError);
       }
     }
@@ -128,8 +128,9 @@ axiosInstance.interceptors.response.use(
     const errorData = error.response?.data;
     const errorMsg = errorData?.message || errorData?.error || error.message || 'Something went wrong';
 
-    // Show toast for errors (excluding cancelled requests or check routes if applicable)
-    if (error.code !== 'ERR_CANCELED') {
+    // Suppress toast for 401s that are handled by the refresh/expiry flow
+    const is401 = error.response?.status === 401;
+    if (error.code !== 'ERR_CANCELED' && !is401) {
       toast.error(errorMsg);
     }
 
