@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import axiosInstance from '../../client/axios';
 import { useApp } from '../../context/AppContext';
-import { Plus, PaperPlane, ClipboardText } from '@phosphor-icons/react';
+import { Plus, PaperPlane, ClipboardText, Clock, Check, X } from '@phosphor-icons/react';
 import toast from 'react-hot-toast';
 import type { CorrectionRequest, MenuItem } from '../../types/api';
 
 export const CorrectionRequests: React.FC = () => {
   const { isOffline } = useApp();
-  const [requests, setRequests] = useState<CorrectionRequest[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<CorrectionRequest[]>([]);
+  const [approvedRequests, setApprovedRequests] = useState<CorrectionRequest[]>([]);
+  const [rejectedRequests, setRejectedRequests] = useState<CorrectionRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
   // New Request Wizard Modal State
@@ -39,22 +41,49 @@ export const CorrectionRequests: React.FC = () => {
     });
   };
 
-  // Fetch submitted requests
+  /**
+   * Fetch correction requests by status
+   */
+  const fetchRequestsByStatus = async (status: string) => {
+    try {
+      const res = await axiosInstance.get('/api/corrections', {
+        params: { status }
+      });
+      if (res.data?.success && res.data?.data) {
+        const raw = res.data.data;
+        const list = Array.isArray(raw) ? raw : raw.corrections || raw.data || [];
+        return list;
+      }
+      return [];
+    } catch (e) {
+      console.error(`Failed to load ${status} correction requests:`, e);
+      toast.error(`Failed to load ${status} correction requests`);
+      return [];
+    }
+  };
+
+  // Fetch all correction requests
   const fetchRequests = async () => {
     setLoading(true);
     try {
       if (isOffline) {
         toast.error('Currently offline. Cannot fetch corrections history.');
-        setRequests([]);
+        setPendingRequests([]);
+        setApprovedRequests([]);
+        setRejectedRequests([]);
         setLoading(false);
         return;
       }
 
-      const res = await axiosInstance.get('/api/corrections');
-      if (res.data?.success && res.data?.data) {
-        const list = Array.isArray(res.data.data) ? res.data.data : res.data.data.corrections || [];
-        setRequests(list);
-      }
+      const [pending, approved, rejected] = await Promise.all([
+        fetchRequestsByStatus('PENDING'),
+        fetchRequestsByStatus('APPROVED'),
+        fetchRequestsByStatus('REJECTED')
+      ]);
+      
+      setPendingRequests(pending);
+      setApprovedRequests(approved);
+      setRejectedRequests(rejected);
     } catch (e) {
       console.error(e);
       toast.error('Failed to load correction requests');
@@ -410,7 +439,10 @@ export const CorrectionRequests: React.FC = () => {
 
       toast.success('Correction request(s) submitted for admin review');
       setShowWizard(false);
-      fetchRequests();
+      
+      // Refresh only pending requests (optimistic update)
+      const pending = await fetchRequestsByStatus('PENDING');
+      setPendingRequests(pending);
     } catch (err) {
       console.error(err);
       toast.error('Failed to submit correction request');
@@ -433,6 +465,10 @@ export const CorrectionRequests: React.FC = () => {
   const handleMouseLeave = () => {
     setShowTooltip(false);
   };
+
+  const totalPending = pendingRequests.length;
+  const totalApproved = approvedRequests.length;
+  const totalRejected = rejectedRequests.length;
 
   return (
     <div className="space-y-6">
@@ -475,88 +511,240 @@ export const CorrectionRequests: React.FC = () => {
         </button>
       </div>
 
-      {/* Requests Grids */}
-      <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
-        {loading ? (
-          <div className="p-8 space-y-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-14 bg-gray-50 rounded animate-pulse" />
-            ))}
-          </div>
-        ) : requests.length === 0 ? (
-          <div className="p-16 text-center select-none space-y-2">
-            <ClipboardText size={48} className="text-brand-gray-neutral mx-auto opacity-75" />
-            <p className="text-brand-gray-neutral text-sm">No correction requests submitted</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm border-collapse">
-              <thead>
-                <tr className="border-b border-brand-light-green bg-[#F9FAFB]/50 text-[13px] font-medium text-brand-dark-green select-none">
-                  <th className="p-4">Submission Date</th>
-                  <th className="p-4">Employee</th>
-                  <th className="p-4">Original Selection</th>
-                  <th className="p-4">Requested Selection</th>
-                  <th className="p-4">Reason</th>
-                  <th className="p-4 text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {requests.map((req) => {
-                  const dateStr = new Date(req.createdAt).toLocaleDateString('en-US', {
-                    day: 'numeric',
-                    month: 'short',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  });
-
-                  const oldItemName = req.oldValue?.menuItemName || 'Original Item';
-                  const oldPrice = req.oldValue?.menuPrice || 0;
-                  const newItemName = req.newValue?.menuItemName || 'Requested Item';
-                  const newPrice = req.newValue?.menuPrice || 0;
-
-                  return (
-                    <tr key={req.id} className="hover:bg-brand-light-green/5 transition-colors">
-                      <td className="p-4 text-brand-gray-neutral text-xs whitespace-nowrap">{dateStr}</td>
-                      <td className="p-4 font-medium text-brand-dark-green whitespace-nowrap">
-                        {req.cashierName || 'Employee'}
-                      </td>
-                      <td className="p-4 text-brand-error-red line-through whitespace-nowrap">
-                        {oldItemName} ({oldPrice.toFixed(2)})
-                      </td>
-                      <td className="p-4 text-brand-dark-green font-semibold whitespace-nowrap">
-                        {newItemName} ({newPrice.toFixed(2)})
-                      </td>
-                      <td className="p-4 text-brand-gray-neutral text-xs max-w-[200px]">
-                        <div 
-                          className="truncate cursor-help relative"
-                          onMouseEnter={(e) => handleMouseEnter(e, req.reason)}
-                          onMouseLeave={handleMouseLeave}
-                        >
-                          {req.reason}
-                        </div>
-                      </td>
-                      <td className="p-4 text-center whitespace-nowrap select-none">
-                        <span
-                          className={`text-[11px] font-semibold px-3 py-1 rounded-full ${
-                            req.status === 'APPROVED'
-                              ? 'bg-brand-dark-green text-brand-white'
-                              : req.status === 'PENDING'
-                                ? 'bg-brand-light-green text-brand-dark-green'
-                                : 'bg-red-100 text-brand-error-red'
-                          }`}
-                        >
-                          {req.status}
-                        </span>
-                      </td>
+      {loading ? (
+        <div className="space-y-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-14 bg-gray-50 rounded animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <>
+          {/* Pending Requests */}
+          <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
+            <div className="px-4 py-3 border-b border-brand-light-green bg-[#F9FAFB]/30">
+              <h3 className="text-brand-dark-green font-semibold flex items-center gap-2 select-none">
+                <Clock size={18} className="text-brand-gold" />
+                <span>Pending ({totalPending})</span>
+              </h3>
+            </div>
+            {totalPending === 0 ? (
+              <div className="p-8 text-center select-none space-y-2">
+                <ClipboardText size={32} className="text-brand-gray-neutral mx-auto opacity-50" />
+                <p className="text-brand-gray-neutral text-sm">No pending correction requests</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-brand-light-green bg-[#F9FAFB]/50 text-[13px] font-medium text-brand-dark-green select-none">
+                      <th className="p-4">Submission Date</th>
+                      <th className="p-4">Employee</th>
+                      <th className="p-4">Original Selection</th>
+                      <th className="p-4">Requested Selection</th>
+                      <th className="p-4">Reason</th>
+                      <th className="p-4 text-center">Status</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {pendingRequests.map((req) => {
+                      const dateStr = new Date(req.createdAt).toLocaleDateString('en-US', {
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      });
+
+                      const oldItemName = req.oldValue?.menuItemName || 'Original Item';
+                      const oldPrice = req.oldValue?.menuPrice || 0;
+                      const newItemName = req.newValue?.menuItemName || 'Requested Item';
+                      const newPrice = req.newValue?.menuPrice || 0;
+
+                      return (
+                        <tr key={req.id} className="hover:bg-brand-light-green/5 transition-colors">
+                          <td className="p-4 text-brand-gray-neutral text-xs whitespace-nowrap">{dateStr}</td>
+                          <td className="p-4 font-medium text-brand-dark-green whitespace-nowrap">
+                            {req.cashierName || 'Employee'}
+                          </td>
+                          <td className="p-4 text-brand-error-red line-through whitespace-nowrap">
+                            {oldItemName} ({oldPrice.toFixed(2)})
+                          </td>
+                          <td className="p-4 text-brand-dark-green font-semibold whitespace-nowrap">
+                            {newItemName} ({newPrice.toFixed(2)})
+                          </td>
+                          <td className="p-4 text-brand-gray-neutral text-xs max-w-[200px]">
+                            <div 
+                              className="truncate cursor-help relative"
+                              onMouseEnter={(e) => handleMouseEnter(e, req.reason)}
+                              onMouseLeave={handleMouseLeave}
+                            >
+                              {req.reason}
+                            </div>
+                          </td>
+                          <td className="p-4 text-center whitespace-nowrap select-none">
+                            <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-brand-light-green text-brand-dark-green">
+                              PENDING
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+
+          {/* Approved Requests */}
+          <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
+            <div className="px-4 py-3 border-b border-brand-light-green bg-[#F9FAFB]/30">
+              <h3 className="text-brand-dark-green font-semibold flex items-center gap-2 select-none">
+                <Check size={18} className="text-green-600" />
+                <span>Approved ({totalApproved})</span>
+              </h3>
+            </div>
+            {totalApproved === 0 ? (
+              <div className="p-8 text-center select-none space-y-2">
+                <ClipboardText size={32} className="text-brand-gray-neutral mx-auto opacity-50" />
+                <p className="text-brand-gray-neutral text-sm">No approved correction requests</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-brand-light-green bg-[#F9FAFB]/50 text-[13px] font-medium text-brand-dark-green select-none">
+                      <th className="p-4">Submission Date</th>
+                      <th className="p-4">Employee</th>
+                      <th className="p-4">Original Selection</th>
+                      <th className="p-4">Requested Selection</th>
+                      <th className="p-4">Reason</th>
+                      <th className="p-4 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {approvedRequests.map((req) => {
+                      const dateStr = new Date(req.createdAt).toLocaleDateString('en-US', {
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      });
+
+                      const oldItemName = req.oldValue?.menuItemName || 'Original Item';
+                      const oldPrice = req.oldValue?.menuPrice || 0;
+                      const newItemName = req.newValue?.menuItemName || 'Requested Item';
+                      const newPrice = req.newValue?.menuPrice || 0;
+
+                      return (
+                        <tr key={req.id} className="hover:bg-brand-light-green/5 transition-colors">
+                          <td className="p-4 text-brand-gray-neutral text-xs whitespace-nowrap">{dateStr}</td>
+                          <td className="p-4 font-medium text-brand-dark-green whitespace-nowrap">
+                            {req.cashierName || 'Employee'}
+                          </td>
+                          <td className="p-4 text-brand-error-red line-through whitespace-nowrap">
+                            {oldItemName} ({oldPrice.toFixed(2)})
+                          </td>
+                          <td className="p-4 text-brand-dark-green font-semibold whitespace-nowrap">
+                            {newItemName} ({newPrice.toFixed(2)})
+                          </td>
+                          <td className="p-4 text-brand-gray-neutral text-xs max-w-[200px]">
+                            <div 
+                              className="truncate cursor-help relative"
+                              onMouseEnter={(e) => handleMouseEnter(e, req.reason)}
+                              onMouseLeave={handleMouseLeave}
+                            >
+                              {req.reason}
+                            </div>
+                          </td>
+                          <td className="p-4 text-center whitespace-nowrap select-none">
+                            <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-brand-dark-green text-brand-white">
+                              APPROVED
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Rejected Requests */}
+          <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
+            <div className="px-4 py-3 border-b border-brand-light-green bg-[#F9FAFB]/30">
+              <h3 className="text-brand-dark-green font-semibold flex items-center gap-2 select-none">
+                <X size={18} className="text-brand-error-red" />
+                <span>Rejected ({totalRejected})</span>
+              </h3>
+            </div>
+            {totalRejected === 0 ? (
+              <div className="p-8 text-center select-none space-y-2">
+                <ClipboardText size={32} className="text-brand-gray-neutral mx-auto opacity-50" />
+                <p className="text-brand-gray-neutral text-sm">No rejected correction requests</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-brand-light-green bg-[#F9FAFB]/50 text-[13px] font-medium text-brand-dark-green select-none">
+                      <th className="p-4">Submission Date</th>
+                      <th className="p-4">Employee</th>
+                      <th className="p-4">Original Selection</th>
+                      <th className="p-4">Requested Selection</th>
+                      <th className="p-4">Reason</th>
+                      <th className="p-4 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {rejectedRequests.map((req) => {
+                      const dateStr = new Date(req.createdAt).toLocaleDateString('en-US', {
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      });
+
+                      const oldItemName = req.oldValue?.menuItemName || 'Original Item';
+                      const oldPrice = req.oldValue?.menuPrice || 0;
+                      const newItemName = req.newValue?.menuItemName || 'Requested Item';
+                      const newPrice = req.newValue?.menuPrice || 0;
+
+                      return (
+                        <tr key={req.id} className="hover:bg-brand-light-green/5 transition-colors">
+                          <td className="p-4 text-brand-gray-neutral text-xs whitespace-nowrap">{dateStr}</td>
+                          <td className="p-4 font-medium text-brand-dark-green whitespace-nowrap">
+                            {req.cashierName || 'Employee'}
+                          </td>
+                          <td className="p-4 text-brand-error-red line-through whitespace-nowrap">
+                            {oldItemName} ({oldPrice.toFixed(2)})
+                          </td>
+                          <td className="p-4 text-brand-dark-green font-semibold whitespace-nowrap">
+                            {newItemName} ({newPrice.toFixed(2)})
+                          </td>
+                          <td className="p-4 text-brand-gray-neutral text-xs max-w-[200px]">
+                            <div 
+                              className="truncate cursor-help relative"
+                              onMouseEnter={(e) => handleMouseEnter(e, req.reason)}
+                              onMouseLeave={handleMouseLeave}
+                            >
+                              {req.reason}
+                            </div>
+                          </td>
+                          <td className="p-4 text-center whitespace-nowrap select-none">
+                            <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-red-100 text-brand-error-red">
+                              REJECTED
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* New Request Creation Wizard Modal */}
       {showWizard && (
