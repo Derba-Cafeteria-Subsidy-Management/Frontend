@@ -29,6 +29,7 @@ import { ReportsHub } from './pages/admin/ReportsHub';
 import { UserManagement } from './pages/super-admin/UserManagement';
 import { SubsidyConfig } from './pages/super-admin/SubsidyConfig';
 import { AuditLogs } from './pages/super-admin/AuditLogs';
+import { LandingPage } from './pages/LandingPage';
 
 type AppRole = 'Cashier' | 'Admin' | 'Super Admin';
 
@@ -103,23 +104,7 @@ const SessionExpiryHandler: React.FC = () => {
   return null;
 };
 
-const RootRedirector: React.FC = () => {
-  const { currentUser, authLoading } = useApp();
 
-  if (authLoading) {
-    return <AuthLoadingScreen />;
-  }
-
-  if (!currentUser) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (currentUser.role === 'CASHIER') return <Navigate to="/cashier" replace />;
-  if (currentUser.role === 'ADMIN') return <Navigate to="/admin" replace />;
-  if (currentUser.role === 'SUPER_ADMIN') return <Navigate to="/super-admin" replace />;
-
-  return <Navigate to="/login" replace />;
-};
 
 function App() {
   return (
@@ -209,7 +194,7 @@ function App() {
           <Route path="audit" element={<AuditLogs />} />
         </Route>
 
-        <Route path="/" element={<RootRedirector />} />
+        <Route path="/" element={<LandingPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <SessionExpiryHandler />
