@@ -94,7 +94,7 @@ export const CorrectionAdjudication: React.FC = () => {
         fetchRequestsByStatus('APPROVED'),
         fetchRequestsByStatus('REJECTED')
       ]);
-      
+
       setPendingRequests(pending);
       setApprovedRequests(approved);
       setRejectedRequests(rejected);
@@ -119,7 +119,7 @@ export const CorrectionAdjudication: React.FC = () => {
     try {
       await axiosInstance.post(`/api/corrections/${req.id}/approve`);
       toast.success('Correction approved successfully!', { id: `approve-${req.id}` });
-      
+
       // Remove from pending and add to approved locally
       setPendingRequests(prev => prev.filter(r => r.id !== req.id));
       setApprovedRequests(prev => [...prev, { ...req, status: 'APPROVED' }]);
@@ -149,17 +149,17 @@ export const CorrectionAdjudication: React.FC = () => {
     setIsSubmitting(true);
     setProcessingId(rejectReq.id);
     toast.loading('Processing rejection...', { id: `reject-${rejectReq.id}` });
-    
+
     try {
       await axiosInstance.post(`/api/corrections/${rejectReq.id}/reject`, {
         reason: rejectionReason.trim()
       });
       toast.success('Correction request rejected.', { id: `reject-${rejectReq.id}` });
-      
+
       // Remove from pending and add to rejected locally
       setPendingRequests(prev => prev.filter(r => r.id !== rejectReq.id));
       setRejectedRequests(prev => [...prev, { ...rejectReq, status: 'REJECTED', rejectionReason: rejectionReason.trim() }]);
-      
+
       setRejectReq(null);
       setRejectionReason('');
       setExpandedId(null);
@@ -214,7 +214,7 @@ export const CorrectionAdjudication: React.FC = () => {
                   return (
                     <div key={req.id} className={`bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden ${isProcessing ? 'opacity-60 pointer-events-none' : ''}`}>
                       {/* Single-line clickable row */}
-                      <div 
+                      <div
                         className={`flex items-center justify-between p-4 cursor-pointer hover:bg-[#F9FAFB]/60 transition-colors ${isProcessing ? 'cursor-not-allowed' : ''}`}
                         onClick={() => !isProcessing && setExpandedId(expandedId === req.id ? null : req.id)}
                       >
@@ -226,8 +226,8 @@ export const CorrectionAdjudication: React.FC = () => {
                               <CaretRight size={18} />
                             )}
                           </button>
-                          
-                          <div className="flex items-center gap-4 flex-1 min-w-0 text-sm">                          
+
+                          <div className="flex items-center gap-4 flex-1 min-w-0 text-sm">
                             <div className="flex items-center gap-3 flex-1 min-w-0">
                               <span className="font-medium text-brand-dark-green truncate">
                                 {req.employeeName}

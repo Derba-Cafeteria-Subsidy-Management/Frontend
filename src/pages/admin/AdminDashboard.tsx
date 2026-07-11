@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axiosInstance from '../../client/axios';
+import { useLanguage } from '../../context/LanguageContext';
 import {
   Users,
   ForkKnife,
@@ -42,7 +43,8 @@ ChartJS.register(
 
 export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
-  
+  const { t } = useLanguage();
+
   // Dashboard stats state (these don't change with tabs)
   const [todayMealsCount, setTodayMealsCount] = useState(0);
   const [pendingCorrectionsCount, setPendingCorrectionsCount] = useState(0);
@@ -78,7 +80,7 @@ export const AdminDashboard: React.FC = () => {
     employeeCost: []
   });
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
-  
+
   // Cache for analytics data to prevent refetching
   const analyticsCache = useRef<Map<string, any>>(new Map());
 
@@ -88,7 +90,7 @@ export const AdminDashboard: React.FC = () => {
   // Fetch dashboard stats only once
   const fetchDashboardStats = useCallback(async () => {
     if (statsLoaded) return; // Skip if already loaded
-    
+
     try {
       // Fetch transactions for today
       const today = new Date();
@@ -113,7 +115,7 @@ export const AdminDashboard: React.FC = () => {
 
         try {
           const firstResponse = await axiosInstance.get('/api/menus', {
-            params: { 
+            params: {
               activeOnly: true,
               page: currentPage,
               pageSize: pageSize
@@ -122,22 +124,22 @@ export const AdminDashboard: React.FC = () => {
 
           if (firstResponse.data?.success && firstResponse.data?.data) {
             const responseData = firstResponse.data.data;
-            
+
             if (responseData.data && Array.isArray(responseData.data)) {
               allItems = responseData.data;
             }
-            
+
             if (responseData.pagination && responseData.pagination.totalCount) {
               totalCount = responseData.pagination.totalCount;
             }
           }
 
           const totalPages = Math.ceil(totalCount / pageSize);
-          
+
           for (let page = 2; page <= totalPages; page++) {
             try {
               const response = await axiosInstance.get('/api/menus', {
-                params: { 
+                params: {
                   activeOnly: true,
                   page: page,
                   pageSize: pageSize
@@ -188,7 +190,7 @@ export const AdminDashboard: React.FC = () => {
       }
       const pending = pendingCorrections.filter((c: any) => c.status === 'PENDING');
       setPendingCorrectionsCount(pending.length);
-      
+
       setStatsLoaded(true);
 
     } catch (e) {
@@ -212,7 +214,7 @@ export const AdminDashboard: React.FC = () => {
 
   const fetchAnalytics = useCallback(async () => {
     const cacheKey = getAnalyticsCacheKey();
-    
+
     // Check cache first
     if (analyticsCache.current.has(cacheKey)) {
       const cachedData = analyticsCache.current.get(cacheKey);
@@ -233,7 +235,7 @@ export const AdminDashboard: React.FC = () => {
         startOfWeek.setDate(date.getDate() - dayOfWeek);
         const endOfWeek = new Date(startOfWeek);
         endOfWeek.setDate(startOfWeek.getDate() + 6);
-        
+
         params.from = startOfWeek.toISOString().split('T')[0];
         params.to = endOfWeek.toISOString().split('T')[0];
         params.date = selectedDate;
@@ -250,7 +252,7 @@ export const AdminDashboard: React.FC = () => {
       let data;
       if (res.data?.success && res.data?.data) {
         data = res.data.data;
-        
+
         // Map labels for yearly view - convert "M1", "M2", etc. to month names
         let labels = data.labels || [];
         if (viewMode === 'yearly' && labels.length > 0) {
@@ -265,7 +267,7 @@ export const AdminDashboard: React.FC = () => {
             return label;
           });
         }
-        
+
         const formattedData = {
           labels: labels,
           transactions: data.transactions || [],
@@ -277,7 +279,7 @@ export const AdminDashboard: React.FC = () => {
         analyticsCache.current.set(cacheKey, formattedData);
       } else {
         // Fallback mock data
-        const mockLabels = viewMode === 'yearly' 
+        const mockLabels = viewMode === 'yearly'
           ? ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
           : ['BREAKFAST', 'LUNCH', 'DINNER'];
         const mockData = {
@@ -292,7 +294,7 @@ export const AdminDashboard: React.FC = () => {
     } catch (error) {
       console.error('Error fetching analytics:', error);
       // Fallback mock data
-      const mockLabels = viewMode === 'yearly' 
+      const mockLabels = viewMode === 'yearly'
         ? ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
         : ['BREAKFAST', 'LUNCH', 'DINNER'];
       const mockData = {
@@ -338,7 +340,7 @@ export const AdminDashboard: React.FC = () => {
       console.warn('Could not update system settings:', error);
     }
 
-    toast.success(newVal ? 'Manual ID Lookup enabled on cashier terminal' : 'Manual ID Lookup disabled on cashier terminal');
+    toast.success(newVal ? t('Manual ID Lookup enabled on cashier terminal') : t('Manual ID Lookup disabled on cashier terminal'));
   };
 
   const handleYearChange = (year: number) => {
@@ -388,7 +390,7 @@ export const AdminDashboard: React.FC = () => {
           `rgba(46, 125, 50, 1)`,
           `rgba(212, 175, 55, 0.8)`
         ],
-        label: 'Transactions',
+        label: t('Transactions'),
         data: analyticsData.transactions,
         format: (value: number) => value.toString()
       },
@@ -403,7 +405,7 @@ export const AdminDashboard: React.FC = () => {
           `rgba(46, 125, 50, 0.8)`,
           `rgba(46, 125, 50, 0.6)`
         ],
-        label: 'Company Revenue',
+        label: t('Company Revenue'),
         data: analyticsData.companyRevenue,
         format: (value: number) => formatCurrency(value)
       },
@@ -418,7 +420,7 @@ export const AdminDashboard: React.FC = () => {
           `rgba(212, 175, 55, 0.8)`,
           `rgba(212, 175, 55, 0.6)`
         ],
-        label: 'Total Cost',
+        label: t('Total Cost'),
         data: analyticsData.employeeCost,
         format: (value: number) => formatCurrency(value)
       }
@@ -463,7 +465,7 @@ export const AdminDashboard: React.FC = () => {
       },
       tooltip: {
         callbacks: {
-          label: function(context: any) {
+          label: function (context: any) {
             let label = context.dataset.label || '';
             let value = context.parsed.y || context.parsed.x || 0;
             return label + ': ' + chartData.format(value);
@@ -482,7 +484,7 @@ export const AdminDashboard: React.FC = () => {
             size: 12
           },
           color: '#616161',
-          callback: function(value: any) {
+          callback: function (value: any) {
             if (chartType === 'revenue' || chartType === 'cost') {
               return formatCurrency(value);
             }
@@ -523,10 +525,10 @@ export const AdminDashboard: React.FC = () => {
       <div className="space-y-8">
         <div>
           <h1 className="text-[28px] font-semibold text-brand-dark-green font-sans leading-none">
-            Dashboard
+            {t('Dashboard')}
           </h1>
           <p className="text-brand-gray-neutral text-sm mt-2">
-            Overview of cafeteria activities, system metrics, and quick actions
+            {t('Overview of cafeteria activities, system metrics, and quick actions')}
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -552,10 +554,10 @@ export const AdminDashboard: React.FC = () => {
       {/* Header */}
       <div>
         <h1 className="text-[28px] font-semibold text-brand-dark-green font-sans leading-none">
-          Dashboard
+          {t('Dashboard')}
         </h1>
         <p className="text-brand-gray-neutral text-sm mt-2">
-          Overview of cafeteria activities, system metrics, and quick actions
+          {t('Overview of cafeteria activities, system metrics, and quick actions')}
         </p>
       </div>
 
@@ -564,33 +566,33 @@ export const AdminDashboard: React.FC = () => {
         <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] border-t-4 border-t-brand-light-green rounded-[12px] p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between min-h-[140px]">
           <div>
             <span className="text-[13px] font-medium text-brand-gray-neutral uppercase tracking-wider block">
-              Today's Meals
+              {t("Today's Meals")}
             </span>
             <span className="text-brand-dark-green text-[36px] font-bold block mt-2 font-mono leading-none">
               {todayMealsCount}
             </span>
           </div>
           <div className="text-xs text-brand-gray-neutral pt-2 select-none">
-            Registered meals today
+            {t('Registered meals today')}
           </div>
         </div>
 
         <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] border-t-4 border-t-brand-gold rounded-[12px] p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between min-h-[140px]">
           <div>
             <span className="text-[13px] font-medium text-brand-gray-neutral uppercase tracking-wider block">
-              Pending Corrections
+              {t('Pending Corrections')}
             </span>
             <span className="text-brand-gold text-[36px] font-bold block mt-2 font-mono leading-none">
               {pendingCorrectionsCount}
             </span>
           </div>
           <div className="flex items-center justify-between pt-2">
-            <span className="text-xs text-brand-gray-neutral select-none">Awaiting adjudication</span>
+            <span className="text-xs text-brand-gray-neutral select-none">{t('Awaiting adjudication')}</span>
             <Link
               to="/admin/corrections"
               className="text-brand-gold text-xs font-semibold hover:underline"
             >
-              Review →
+              {t('Review →')}
             </Link>
           </div>
         </div>
@@ -598,14 +600,14 @@ export const AdminDashboard: React.FC = () => {
         <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] border-t-4 border-t-brand-light-green rounded-[12px] p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between min-h-[140px]">
           <div>
             <span className="text-[13px] font-medium text-brand-gray-neutral uppercase tracking-wider block">
-              Active Menu Items
+              {t('Active Menu Items')}
             </span>
             <span className="text-brand-dark-green text-[36px] font-bold block mt-2 font-mono leading-none">
               {activeMenuItemsCount}
             </span>
           </div>
           <div className="text-xs text-brand-gray-neutral pt-2 select-none">
-            Items currently active on menus
+            {t('Items currently active on menus')}
           </div>
         </div>
       </div>
@@ -616,7 +618,7 @@ export const AdminDashboard: React.FC = () => {
           <div className="flex items-center gap-3">
             <ChartBar size={24} className="text-brand-dark-green flex-shrink-0" />
             <h3 className="text-brand-dark-green font-semibold text-lg select-none">
-              Analytics Dashboard
+              {t('Analytics Dashboard')}
             </h3>
           </div>
 
@@ -625,43 +627,39 @@ export const AdminDashboard: React.FC = () => {
             <div className="flex rounded-[8px] overflow-hidden border border-brand-light-green">
               <button
                 onClick={() => handleViewModeChange('daily')}
-                className={`px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap ${
-                  viewMode === 'daily'
+                className={`px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap ${viewMode === 'daily'
                     ? 'bg-brand-dark-green text-brand-white'
                     : 'bg-brand-white text-brand-gray-neutral hover:bg-brand-light-green/10'
-                }`}
+                  }`}
               >
-                Daily
+                {t('Daily')}
               </button>
               <button
                 onClick={() => handleViewModeChange('weekly')}
-                className={`px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap ${
-                  viewMode === 'weekly'
+                className={`px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap ${viewMode === 'weekly'
                     ? 'bg-brand-dark-green text-brand-white'
                     : 'bg-brand-white text-brand-gray-neutral hover:bg-brand-light-green/10'
-                }`}
+                  }`}
               >
-                Weekly
+                {t('Weekly')}
               </button>
               <button
                 onClick={() => handleViewModeChange('monthly')}
-                className={`px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap ${
-                  viewMode === 'monthly'
+                className={`px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap ${viewMode === 'monthly'
                     ? 'bg-brand-dark-green text-brand-white'
                     : 'bg-brand-white text-brand-gray-neutral hover:bg-brand-light-green/10'
-                }`}
+                  }`}
               >
-                Monthly
+                {t('Monthly')}
               </button>
               <button
                 onClick={() => handleViewModeChange('yearly')}
-                className={`px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap ${
-                  viewMode === 'yearly'
+                className={`px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap ${viewMode === 'yearly'
                     ? 'bg-brand-dark-green text-brand-white'
                     : 'bg-brand-white text-brand-gray-neutral hover:bg-brand-light-green/10'
-                }`}
+                  }`}
               >
-                Yearly
+                {t('Yearly')}
               </button>
             </div>
           </div>
@@ -684,7 +682,7 @@ export const AdminDashboard: React.FC = () => {
 
           {(viewMode === 'monthly' || viewMode === 'yearly') && (
             <div className="flex items-center gap-2">
-              <label className="text-sm text-brand-gray-neutral whitespace-nowrap font-medium">Year:</label>
+              <label className="text-sm text-brand-gray-neutral whitespace-nowrap font-medium">{t('Year:')}</label>
               <select
                 value={selectedYear}
                 onChange={(e) => handleYearChange(parseInt(e.target.value))}
@@ -699,7 +697,7 @@ export const AdminDashboard: React.FC = () => {
 
           {viewMode === 'monthly' && (
             <div className="flex items-center gap-2">
-              <label className="text-sm text-brand-gray-neutral whitespace-nowrap font-medium">Month:</label>
+              <label className="text-sm text-brand-gray-neutral whitespace-nowrap font-medium">{t('Month:')}</label>
               <select
                 value={selectedMonth}
                 onChange={(e) => handleMonthChange(parseInt(e.target.value))}
@@ -717,36 +715,33 @@ export const AdminDashboard: React.FC = () => {
         <div className="flex flex-wrap gap-2 mb-6">
           <button
             onClick={() => setChartType('transactions')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-[8px] text-sm font-medium transition-all ${
-              chartType === 'transactions'
+            className={`flex items-center gap-2 px-4 py-2 rounded-[8px] text-sm font-medium transition-all ${chartType === 'transactions'
                 ? 'bg-brand-dark-green text-brand-white shadow-md'
                 : 'bg-brand-white text-brand-gray-neutral hover:bg-brand-light-green/10 border border-brand-light-green'
-            }`}
+              }`}
           >
             <Coffee size={18} />
-            Transactions
+            {t('Transactions')}
           </button>
           <button
             onClick={() => setChartType('revenue')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-[8px] text-sm font-medium transition-all ${
-              chartType === 'revenue'
+            className={`flex items-center gap-2 px-4 py-2 rounded-[8px] text-sm font-medium transition-all ${chartType === 'revenue'
                 ? 'bg-brand-dark-green text-brand-white shadow-md'
                 : 'bg-brand-white text-brand-gray-neutral hover:bg-brand-light-green/10 border border-brand-light-green'
-            }`}
+              }`}
           >
             <CurrencyDollar size={18} />
-            Company Revenue
+            {t('Company Revenue')}
           </button>
           <button
             onClick={() => setChartType('cost')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-[8px] text-sm font-medium transition-all ${
-              chartType === 'cost'
+            className={`flex items-center gap-2 px-4 py-2 rounded-[8px] text-sm font-medium transition-all ${chartType === 'cost'
                 ? 'bg-brand-dark-green text-brand-white shadow-md'
                 : 'bg-brand-white text-brand-gray-neutral hover:bg-brand-light-green/10 border border-brand-light-green'
-            }`}
+              }`}
           >
             <Receipt size={18} />
-            Total Cost
+            {t('Total Cost')}
           </button>
         </div>
 
@@ -757,13 +752,13 @@ export const AdminDashboard: React.FC = () => {
               <h4 className="text-sm font-semibold text-brand-dark-green">{getChartTitle()}</h4>
               <div className="text-sm text-brand-gray-neutral">
                 Total: <span className="font-semibold text-brand-dark-green">
-                  {chartType === 'transactions' 
-                    ? getTotal() 
+                  {chartType === 'transactions'
+                    ? getTotal()
                     : formatCurrency(getTotal())}
                 </span>
               </div>
             </div>
-            
+
             <div className="border border-brand-light-green rounded-[8px] p-4 bg-brand-white">
               <div className="h-[350px]">
                 <Bar data={chartData} options={barChartOptions} />

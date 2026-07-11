@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { useLanguage } from '../context/LanguageContext';
 import {
   SignOut,
   House,
@@ -16,6 +17,35 @@ import {
   // WifiSlash
 } from '@phosphor-icons/react';
 import logo from '../assets/logo.png';
+
+export const LanguageToggle: React.FC = () => {
+  const { language, setLanguage } = useLanguage();
+  return (
+    <div className="flex items-center bg-gray-100 rounded-full p-0.5 border border-gray-200 select-none">
+      <button
+        onClick={() => setLanguage('en')}
+        className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+          language === 'en'
+            ? 'bg-[#1A5C3A] text-white shadow-sm'
+            : 'text-gray-500 hover:text-gray-800'
+        }`}
+      >
+        EN
+      </button>
+      <button
+        onClick={() => setLanguage('am')}
+        className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+          language === 'am'
+            ? 'bg-[#1A5C3A] text-white shadow-sm'
+            : 'text-gray-500 hover:text-gray-800'
+        }`}
+      >
+        አማ
+      </button>
+    </div>
+  );
+};
+
 
 // ================= AUTH LAYOUT =================
 export const AuthLayout: React.FC = () => {
@@ -45,6 +75,7 @@ export const CashierLayout: React.FC = () => {
 
   // Type alias for cashier step numbers
   type CashierStep = 1 | 2 | 3 | 4 | 5;
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -57,11 +88,11 @@ export const CashierLayout: React.FC = () => {
 
   // Step indicator data
   const steps = [
-    { num: 1, label: 'ID', activeOn: [1] },
-    { num: 2, label: 'Session', activeOn: [2] },
-    { num: 3, label: 'Meal', activeOn: [3] },
-    { num: 4, label: 'Drink', activeOn: [4] },
-    { num: 5, label: 'Review', activeOn: [5, 6] }, // remains review status or completed
+    { num: 1, label: t('ID'), activeOn: [1] },
+    { num: 2, label: t('Session'), activeOn: [2] },
+    { num: 3, label: t('Meal'), activeOn: [3] },
+    { num: 4, label: t('Drink'), activeOn: [4] },
+    { num: 5, label: t('Review'), activeOn: [5, 6] }, // remains review status or completed
   ];
 
   return (
@@ -71,7 +102,7 @@ export const CashierLayout: React.FC = () => {
         {/* Left: Logo */}
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/cashier')}>
           <span className="text-brand-gold text-2xl font-bold font-mono"><img width='50px' src={logo} /></span>
-          <span className="text-brand-dark-green font-semibold text-lg font-sans tracking-wide">Derba MIDROC Cement Cafeteria</span>
+          <span className="text-brand-dark-green font-semibold text-lg font-sans tracking-wide">{t('Derba MIDROC Cement Cafeteria')}</span>
         </div>
 
         {/* Center: Title / Context */}
@@ -101,15 +132,16 @@ export const CashierLayout: React.FC = () => {
             </span>
           </div> */}
 
+          <LanguageToggle />
           <div className="flex items-center gap-4">
             <span className="text-brand-dark-green text-sm font-medium">
-              {currentUser?.email || 'Cashier'}
+              {currentUser?.email || t('Cashier')}
             </span>
             <button
               onClick={handleLogout}
-              className="text-brand-gold text-sm font-medium hover:underline focus:outline-none"
+              className="text-brand-gold text-sm font-medium hover:underline focus:outline-none cursor-pointer"
             >
-              Logout
+              {t('Logout')}
             </button>
           </div>
         </div>
@@ -123,21 +155,21 @@ export const CashierLayout: React.FC = () => {
             className={`text-sm py-1 px-3 rounded hover:bg-[#F9FAFB] transition ${location.pathname === '/cashier' ? 'text-brand-gold font-medium' : 'text-brand-dark-green'
               }`}
           >
-            Register Meal
+            {t('Register Meal')}
           </Link>
           <Link
             to="/cashier/transactions"
             className={`text-sm py-1 px-3 rounded hover:bg-[#F9FAFB] transition ${location.pathname === '/cashier/transactions' ? 'text-brand-gold font-medium' : 'text-brand-dark-green'
               }`}
           >
-            Today's Transactions
+            {t("Today's Transactions")}
           </Link>
           <Link
             to="/cashier/corrections"
             className={`text-sm py-1 px-3 rounded hover:bg-[#F9FAFB] transition ${location.pathname === '/cashier/corrections' ? 'text-brand-gold font-medium' : 'text-brand-dark-green'
               }`}
           >
-            Correction Requests
+            {t('Correction Requests')}
           </Link>
         </div>
       </div>
@@ -209,6 +241,7 @@ interface SidebarProps {
 
 const BaseAdminLayout: React.FC<SidebarProps> = ({ title, navItems }) => {
   const { currentUser, logout } = useApp();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -235,12 +268,12 @@ const BaseAdminLayout: React.FC<SidebarProps> = ({ title, navItems }) => {
           {/* Logo Brand Area */}
           <div className="p-6 border-b border-brand-light-green/30 flex items-center gap-2">
             <span className="text-brand-gold text-2xl font-bold font-mono"><img width='50px' src={logo} /></span>
-            <span className="text-brand-dark-green font-semibold font-sans tracking-wide">Derba MIDROC Cement Cafeteria</span>
+            <span className="text-brand-dark-green font-semibold font-sans tracking-wide">{t('Derba MIDROC Cement')}</span>
           </div>
 
           <div className="px-4 py-3">
             <span className="text-brand-gray-neutral text-xs font-semibold tracking-wider uppercase font-sans">
-              {title}
+              {t(title)}
             </span>
           </div>
 
@@ -258,7 +291,7 @@ const BaseAdminLayout: React.FC<SidebarProps> = ({ title, navItems }) => {
                     }`}
                 >
                   <item.icon size={20} className={isActive ? 'text-brand-gold' : 'text-brand-dark-green'} />
-                  <span className="font-sans">{item.label}</span>
+                  <span className="font-sans">{t(item.label)}</span>
                 </Link>
               );
             })}
@@ -269,21 +302,21 @@ const BaseAdminLayout: React.FC<SidebarProps> = ({ title, navItems }) => {
         <div className="p-4 border-t border-brand-light-green/30 space-y-2 bg-[#F9FAFB]/50">
           <div className="text-xs">
             <p className="text-brand-dark-green font-semibold truncate">
-              {currentUser?.email || 'User'}
+              {currentUser?.email || t('User')}
             </p>
             <p className="text-brand-gray-neutral truncate">{currentUser?.email || ''}</p>
             <p className="text-[10px] text-brand-gold font-medium mt-0.5 tracking-wider uppercase">
-              {currentUser?.role}
+              {t(currentUser?.role || '')}
             </p>
           </div>
 
           <div className="pt-2 flex flex-col gap-1.5">
             <button
               onClick={handleLogout}
-              className="flex items-center justify-center gap-2 w-full py-2 px-3 text-xs font-medium border border-brand-error-red/20 text-brand-error-red rounded hover:bg-brand-error-red/5 transition-colors"
+              className="flex items-center justify-center gap-2 w-full py-2 px-3 text-xs font-medium border border-brand-error-red/20 text-brand-error-red rounded hover:bg-brand-error-red/5 transition-colors cursor-pointer"
             >
               <SignOut size={16} />
-              <span>Sign Out</span>
+              <span>{t('Sign Out')}</span>
             </button>
           </div>
         </div>
@@ -295,10 +328,13 @@ const BaseAdminLayout: React.FC<SidebarProps> = ({ title, navItems }) => {
         <header className="h-[64px] border-b border-brand-light-green/30 px-8 flex items-center justify-between bg-brand-white select-none shrink-0">
           <div className="flex items-center gap-3">
             <span className="w-2.5 h-2.5 rounded-full bg-brand-dark-green" />
-            <span className="text-sm font-medium text-brand-dark-green">Management System Active</span>
+            <span className="text-sm font-medium text-brand-dark-green">{t('Management System Active')}</span>
           </div>
-          <div className="text-sm text-brand-gray-neutral font-medium">
-            System Date: {new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
+          <div className="flex items-center gap-6">
+            <LanguageToggle />
+            <div className="text-sm text-brand-gray-neutral font-medium">
+              {t('System Date:')} {new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </div>
           </div>
         </header>
 

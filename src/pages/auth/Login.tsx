@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { Eye, EyeSlash, ShieldWarning } from '@phosphor-icons/react';
 import toast from 'react-hot-toast';
 import logo from '../../assets/logo.png';
 
 export const Login: React.FC = () => {
   const { login } = useApp();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -20,10 +22,10 @@ export const Login: React.FC = () => {
   useEffect(() => {
     const message = (location.state as { message?: string } | null)?.message;
     if (message) {
-      toast.success(message);
+      toast.success(t(message));
       navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [location.pathname, location.state, navigate]);
+  }, [location.pathname, location.state, navigate, t]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,12 +36,12 @@ export const Login: React.FC = () => {
     setIsLoading(false);
 
     if (result.success) {
-      toast.success('Welcome back!');
+      toast.success(t('Welcome back!'));
       const from = (location.state as { from?: string } | null)?.from;
       navigate(from || result.redirectTo || '/');
     } else {
-      setErrorMsg(result.error || 'Invalid credentials or inactive account.');
-      toast.error(result.error || 'Authentication failed.');
+      setErrorMsg(result.error || t('Invalid credentials or inactive account.'));
+      toast.error(result.error || t('Authentication failed.'));
     }
   };
 
@@ -50,12 +52,12 @@ export const Login: React.FC = () => {
           <span className="text-brand-gold text-2xl font-bold font-mono">
             <img width="50px" src={logo} alt="Derba MIDROC Cement logo" />
           </span>
-          <span className="text-brand-dark-green font-bold text-[20px] tracking-wide">Derba MIDROC Cement</span>
+          <span className="text-brand-dark-green font-bold text-[20px] tracking-wide">{t('Derba MIDROC Cement')}</span>
         </div>
         <h2 className="text-[20px] font-semibold text-brand-dark-green font-sans">
-          Cafeteria Management System
+          {t('Cafeteria Management System')}
         </h2>
-        <p className="text-brand-gray-neutral text-sm">Sign in to your account</p>
+        <p className="text-brand-gray-neutral text-sm">{t('Sign in to your account')}</p>
       </div>
 
       {errorMsg && (
@@ -67,11 +69,11 @@ export const Login: React.FC = () => {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1.5">
-          <label className="block text-[13px] font-medium text-brand-dark-green">Email</label>
+          <label className="block text-[13px] font-medium text-brand-dark-green">{t('Email')}</label>
           <input
             type="email"
             disabled={isLoading}
-            placeholder="Enter email address"
+            placeholder={t('Enter email address')}
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -81,12 +83,12 @@ export const Login: React.FC = () => {
 
         <div className="space-y-1.5">
           <div className="flex justify-between items-center">
-            <label className="text-[13px] font-medium text-brand-dark-green">Password</label>
+            <label className="text-[13px] font-medium text-brand-dark-green">{t('Password')}</label>
             <Link
               to="/forgot-password"
               className="text-brand-gold text-xs font-medium hover:underline"
             >
-              Forgot password?
+              {t('Forgot password?')}
             </Link>
           </div>
 
@@ -94,7 +96,7 @@ export const Login: React.FC = () => {
             <input
               type={showPassword ? 'text' : 'password'}
               disabled={isLoading}
-              placeholder="Enter password"
+              placeholder={t('Enter password')}
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -103,7 +105,7 @@ export const Login: React.FC = () => {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-gray-neutral hover:text-brand-dark-green focus:outline-none"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-gray-neutral hover:text-brand-dark-green focus:outline-none cursor-pointer"
             >
               {showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
             </button>
@@ -119,14 +121,14 @@ export const Login: React.FC = () => {
             className="w-4 h-4 accent-brand-dark-green border-gray-300 rounded focus:ring-0 focus:ring-offset-0 focus:outline-none"
           />
           <label htmlFor="remember-me" className="text-xs text-brand-gray-neutral select-none cursor-pointer">
-            Remember me
+            {t('Remember me')}
           </label>
         </div>
 
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full h-[48px] bg-brand-gold text-brand-white rounded-[8px] font-medium text-sm hover:opacity-90 active:scale-[0.99] transition disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full h-[48px] bg-brand-gold text-brand-white rounded-[8px] font-medium text-sm hover:opacity-90 active:scale-[0.99] transition disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
         >
           {isLoading ? (
             <>
@@ -138,10 +140,10 @@ export const Login: React.FC = () => {
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 />
               </svg>
-              <span>Processing...</span>
+              <span>{t('Processing...')}</span>
             </>
           ) : (
-            'Login'
+            t('Login')
           )}
         </button>
       </form>

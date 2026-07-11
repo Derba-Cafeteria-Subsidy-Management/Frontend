@@ -4,8 +4,10 @@ import { ShieldCheck, ShieldWarning, ArrowLeft } from '@phosphor-icons/react';
 import toast from 'react-hot-toast';
 import { resetPasswordRequest } from '../../lib/api/auth';
 import { getErrorMessage } from '../../lib/api/errors';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const ResetPassword: React.FC = () => {
+  const { t } = useLanguage();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get('token') || '';
@@ -23,9 +25,9 @@ export const ResetPassword: React.FC = () => {
 
   useEffect(() => {
     if (!token) {
-      setErrorMsg('Invalid or missing reset token. Please request a new reset link.');
+      setErrorMsg(t('Invalid or missing reset token. Please request a new reset link.'));
     }
-  }, [token]);
+  }, [token, t]);
 
   useEffect(() => {
     if (!password) {
@@ -58,15 +60,15 @@ export const ResetPassword: React.FC = () => {
     e.preventDefault();
 
     if (!token) {
-      setErrorMsg('Invalid or missing reset token.');
+      setErrorMsg(t('Invalid or missing reset token.'));
       return;
     }
     if (password.length < 8) {
-      toast.error('Password must be at least 8 characters');
+      toast.error(t('Password must be at least 8 characters'));
       return;
     }
     if (password !== confirmPassword) {
-      toast.error('Passwords do not match');
+      toast.error(t('Passwords do not match'));
       return;
     }
 
@@ -75,8 +77,8 @@ export const ResetPassword: React.FC = () => {
 
     try {
       await resetPasswordRequest(token, password);
-      toast.success('Password changed successfully!');
-      navigate('/login', { state: { message: 'Password reset successful. Please sign in.' } });
+      toast.success(t('Password changed successfully!'));
+      navigate('/login', { state: { message: t('Password reset successful. Please sign in.') } });
     } catch (error) {
       const status = (error as { status?: number }).status || 500;
       const message = getErrorMessage(status, {
@@ -92,8 +94,8 @@ export const ResetPassword: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="text-center space-y-2 select-none">
-        <h2 className="text-[20px] font-semibold text-brand-dark-green font-sans">Reset Password</h2>
-        <p className="text-brand-gray-neutral text-sm">Choose a new password for your account</p>
+        <h2 className="text-[20px] font-semibold text-brand-dark-green font-sans">{t('Reset Password')}</h2>
+        <p className="text-brand-gray-neutral text-sm">{t('Choose a new password for your account')}</p>
       </div>
 
       {errorMsg && (
@@ -105,14 +107,14 @@ export const ResetPassword: React.FC = () => {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1.5">
-          <label className="block text-[13px] font-medium text-brand-dark-green">New Password</label>
+          <label className="block text-[13px] font-medium text-brand-dark-green">{t('New Password')}</label>
           <input
             type="password"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             disabled={!token || isSubmitting}
-            placeholder="Password (min 8 characters)"
+            placeholder={t('Password (min 8 characters)')}
             autoComplete="new-password"
             className="w-full h-[44px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-2 focus:border-brand-dark-green text-sm text-brand-dark-green disabled:bg-gray-50"
           />
@@ -120,7 +122,7 @@ export const ResetPassword: React.FC = () => {
           {password && (
             <div className="space-y-1.5 pt-1">
               <div className="flex justify-between items-center text-[11px] font-medium">
-                <span className="text-brand-gray-neutral">Strength:</span>
+                <span className="text-brand-gray-neutral">{t('Strength:')}</span>
                 <span
                   className={
                     pwdStrength.score >= 4
@@ -130,7 +132,7 @@ export const ResetPassword: React.FC = () => {
                         : 'text-brand-error-red font-semibold'
                   }
                 >
-                  {pwdStrength.label}
+                  {t(pwdStrength.label)}
                 </span>
               </div>
               <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden">
@@ -144,26 +146,26 @@ export const ResetPassword: React.FC = () => {
         </div>
 
         <div className="space-y-1.5">
-          <label className="block text-[13px] font-medium text-brand-dark-green">Confirm Password</label>
+          <label className="block text-[13px] font-medium text-brand-dark-green">{t('Confirm Password')}</label>
           <input
             type="password"
             required
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             disabled={!token || isSubmitting}
-            placeholder="Re-enter password"
+            placeholder={t('Re-enter password')}
             autoComplete="new-password"
             className="w-full h-[44px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-2 focus:border-brand-dark-green text-sm text-brand-dark-green disabled:bg-gray-50"
           />
           {confirmPassword && password !== confirmPassword && (
-            <p className="text-[11px] text-brand-error-red">Passwords do not match</p>
+            <p className="text-[11px] text-brand-error-red">{t('Passwords do not match')}</p>
           )}
         </div>
 
         <button
           type="submit"
           disabled={!token || isSubmitting}
-          className="w-full h-[48px] bg-brand-gold text-brand-white rounded-[8px] font-medium text-sm hover:opacity-90 active:scale-[0.99] transition disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full h-[48px] bg-brand-gold text-brand-white rounded-[8px] font-medium text-sm hover:opacity-90 active:scale-[0.99] transition disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
         >
           {isSubmitting ? (
             <>
@@ -175,12 +177,12 @@ export const ResetPassword: React.FC = () => {
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 />
               </svg>
-              <span>Updating...</span>
+              <span>{t('Updating...')}</span>
             </>
           ) : (
             <>
               <ShieldCheck size={18} />
-              <span>Reset Password</span>
+              <span>{t('Reset Password')}</span>
             </>
           )}
         </button>
@@ -191,7 +193,7 @@ export const ResetPassword: React.FC = () => {
         className="flex items-center justify-center gap-1.5 text-brand-gold text-sm font-medium hover:underline"
       >
         <ArrowLeft size={16} />
-        Back to login
+        {t('Back to login')}
       </Link>
     </div>
   );
