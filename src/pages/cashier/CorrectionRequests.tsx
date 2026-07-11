@@ -1,23 +1,127 @@
 import React, { useState, useEffect } from 'react';
 import axiosInstance from '../../client/axios';
 import { useApp } from '../../context/AppContext';
-import { Plus, PaperPlane, ClipboardText, Clock, Check, X } from '@phosphor-icons/react';
+import { Plus, PaperPlane, ClipboardText, Clock, Check, X, MagnifyingGlass } from '@phosphor-icons/react';
 import toast from 'react-hot-toast';
 import type { CorrectionRequest, MenuItem } from '../../types/api';
 
+// Pagination component
+const Pagination: React.FC<{
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}> = ({ currentPage, totalPages, onPageChange }) => {
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    
+    if (totalPages <= maxVisible) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      if (currentPage <= 3) {
+        for (let i = 1; i <= 4; i++) pages.push(i);
+        pages.push('...');
+        pages.push(totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1);
+        pages.push('...');
+        for (let i = totalPages - 3; i <= totalPages; i++) pages.push(i);
+      } else {
+        pages.push(1);
+        pages.push('...');
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) pages.push(i);
+        pages.push('...');
+        pages.push(totalPages);
+      }
+    }
+    return pages;
+  };
+
+  if (totalPages <= 1) return null;
+
+  return (
+    <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50/50">
+      <button
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage === 1}
+        className="px-3 py-1 text-sm text-brand-dark-green disabled:text-gray-400 hover:bg-gray-100 rounded transition disabled:hover:bg-transparent"
+      >
+        Previous
+      </button>
+      <div className="flex gap-1">
+        {getPageNumbers().map((page, idx) => (
+          <button
+            key={idx}
+            onClick={() => typeof page === 'number' && onPageChange(page)}
+            className={`px-3 py-1 text-sm rounded transition ${
+              page === currentPage
+                ? 'bg-brand-gold text-brand-white'
+                : page === '...'
+                ? 'text-gray-400 cursor-default'
+                : 'hover:bg-gray-100 text-brand-dark-green'
+            }`}
+            disabled={page === '...'}
+          >
+            {page}
+          </button>
+        ))}
+      </div>
+      <button
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage === totalPages}
+        className="px-3 py-1 text-sm text-brand-dark-green disabled:text-gray-400 hover:bg-gray-100 rounded transition disabled:hover:bg-transparent"
+      >
+        Next
+      </button>
+    </div>
+  );
+};
+
+// Tab configuration
+type TabType = 'pending' | 'approved' | 'rejected';
+
+interface TabConfig {
+  key: TabType;
+  label: string;
+  icon: React.ReactNode;
+  count: number;
+  status: string;
+  badgeColor: string;
+  badgeBg: string;
+}
+
 export const CorrectionRequests: React.FC = () => {
   const { isOffline } = useApp();
+  const [activeTab, setActiveTab] = useState<TabType>('pending');
+  
+  // Data states
   const [pendingRequests, setPendingRequests] = useState<CorrectionRequest[]>([]);
   const [approvedRequests, setApprovedRequests] = useState<CorrectionRequest[]>([]);
   const [rejectedRequests, setRejectedRequests] = useState<CorrectionRequest[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Search states per tab
+  const [searchQuery, setSearchQuery] = useState<Record<TabType, string>>({
+    pending: '',
+    approved: '',
+    rejected: ''
+  });
+
+  // Pagination states per tab
+  const [currentPage, setCurrentPage] = useState<Record<TabType, number>>({
+    pending: 1,
+    approved: 1,
+    rejected: 1
+  });
+  const itemsPerPage = 5;
 
   // New Request Wizard Modal State
   const [showWizard, setShowWizard] = useState(false);
   const [todaysTransactions, setTodaysTransactions] = useState<any[]>([]);
   const [selectedTxnId, setSelectedTxnId] = useState<string>('');
   const [selectedTxn, setSelectedTxn] = useState<any | null>(null);
-
   const [availableMenuItems, setAvailableMenuItems] = useState<MenuItem[]>([]);
   const [availableDrinkItems, setAvailableDrinkItems] = useState<MenuItem[]>([]);
   const [requestedItemId, setRequestedItemId] = useState<string>('');
@@ -30,6 +134,56 @@ export const CorrectionRequests: React.FC = () => {
   const [tooltipText, setTooltipText] = useState('');
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const [showTooltip, setShowTooltip] = useState(false);
+
+  // Get filtered and paginated data for current tab
+  const getFilteredData = (tab: TabType) => {
+    const dataMap = {
+      pending: pendingRequests,
+      approved: approvedRequests,
+      rejected: rejectedRequests
+    };
+    const data = dataMap[tab];
+    const query = searchQuery[tab].toLowerCase().trim();
+
+    if (!query) return data;
+
+    return data.filter(req => {
+      const searchableText = [
+        req.employee || 'Employee',
+        req.oldValue?.menuItemName || '',
+        req.newValue?.menuItemName || '',
+        req.reason,
+        new Date(req.createdAt).toLocaleDateString('en-US', { 
+          day: 'numeric', 
+          month: 'short', 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        })
+      ].join(' ').toLowerCase();
+
+      return searchableText.includes(query);
+    });
+  };
+
+  const getPaginatedData = (tab: TabType) => {
+    const filtered = getFilteredData(tab);
+    const page = currentPage[tab];
+    const start = (page - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    return {
+      data: filtered.slice(start, end),
+      totalItems: filtered.length,
+      totalPages: Math.ceil(filtered.length / itemsPerPage)
+    };
+  };
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(prev => ({
+      ...prev,
+      [activeTab]: 1
+    }));
+  }, [searchQuery[activeTab]]);
 
   /**
    * Get today's date in YYYY-MM-DD format in Nairobi timezone
@@ -186,7 +340,6 @@ export const CorrectionRequests: React.FC = () => {
           : response.data.data.transactions || [];
 
         const mappedTransactions = list.map((transaction: any) => {
-          // Extract meal and drink from items array
           const items = transaction.items || [];
           let mealPrice = 0;
           let drinkPrice = 0;
@@ -226,14 +379,13 @@ export const CorrectionRequests: React.FC = () => {
             menuPrice: mealPrice,
             drinkItem: drinkName,
             drinkPrice: drinkPrice,
-            items: items, // Keep the full items array for accessing transaction item IDs
+            items: items,
             transactionDate: transaction.transactionDate,
             createdAt: transaction.createdAt,
             correctionStatus: transaction.correctionStatus || 'COMPLETE',
           };
         });
 
-        // Filter out transactions with pending correction
         const eligible = mappedTransactions.filter(
           (t: any) => t.correctionStatus !== 'PENDING_CORRECTION'
         );
@@ -278,7 +430,6 @@ export const CorrectionRequests: React.FC = () => {
           try {
             const allItems = await fetchAllMenuItems();
             
-            // Filter meal items (non-drinks)
             const sessionMenus = allItems.filter(
               (item: MenuItem) => {
                 const lowerName = item.name.toLowerCase();
@@ -303,7 +454,6 @@ export const CorrectionRequests: React.FC = () => {
               }
             );
             
-            // Filter drink items
             const drinkItems = allItems.filter(
               (item: MenuItem) => {
                 const lowerName = item.name.toLowerCase();
@@ -345,7 +495,6 @@ export const CorrectionRequests: React.FC = () => {
   const handleSubmitWizard = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate that at least one correction is selected
     if (!selectedTxn) {
       toast.error('No transaction selected');
       return;
@@ -373,12 +522,9 @@ export const CorrectionRequests: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      // The API expects corrections to be submitted per item
-      // We need to send separate requests for meal and drink if both are selected
       const items = selectedTxn.items || [];
       
       if (requestedItemId) {
-        // Find the meal item from the transaction's items array to get its transactionItemId
         const mealTransactionItem = items.find((item: any) => {
           const itemName = item?.menuItem?.name || item?.name || '';
           const isDrink = 
@@ -395,7 +541,7 @@ export const CorrectionRequests: React.FC = () => {
 
         if (mealTransactionItem?.id) {
           const mealCorrectionData = {
-            transactionId: mealTransactionItem.id, // Use the transaction item ID
+            transactionId: mealTransactionItem.id,
             newMenuItemId: requestedItemId,
             reason: reason.trim(),
           };
@@ -408,7 +554,6 @@ export const CorrectionRequests: React.FC = () => {
       }
       
       if (requestedDrinkId) {
-        // Find the drink item from the transaction's items array to get its transactionItemId
         const drinkTransactionItem = items.find((item: any) => {
           const itemName = item?.menuItem?.name || item?.name || '';
           const isDrink = 
@@ -425,7 +570,7 @@ export const CorrectionRequests: React.FC = () => {
 
         if (drinkTransactionItem?.id) {
           const drinkCorrectionData = {
-            transactionId: drinkTransactionItem.id, // Use the transaction item ID
+            transactionId: drinkTransactionItem.id,
             newMenuItemId: requestedDrinkId,
             reason: reason.trim(),
           };
@@ -440,7 +585,7 @@ export const CorrectionRequests: React.FC = () => {
       toast.success('Correction request(s) submitted for admin review');
       setShowWizard(false);
       
-      // Refresh only pending requests (optimistic update)
+      // Refresh only pending requests
       const pending = await fetchRequestsByStatus('PENDING');
       setPendingRequests(pending);
     } catch (err) {
@@ -466,9 +611,157 @@ export const CorrectionRequests: React.FC = () => {
     setShowTooltip(false);
   };
 
-  const totalPending = pendingRequests.length;
-  const totalApproved = approvedRequests.length;
-  const totalRejected = rejectedRequests.length;
+  // Tab configuration
+  const tabs: TabConfig[] = [
+    {
+      key: 'pending',
+      label: 'Pending',
+      icon: <Clock size={18} className="text-brand-gold" />,
+      count: pendingRequests.length,
+      status: 'PENDING',
+      badgeColor: 'text-brand-dark-green',
+      badgeBg: 'bg-brand-light-green'
+    },
+    {
+      key: 'approved',
+      label: 'Approved',
+      icon: <Check size={18} className="text-green-600" />,
+      count: approvedRequests.length,
+      status: 'APPROVED',
+      badgeColor: 'text-brand-white',
+      badgeBg: 'bg-brand-dark-green'
+    },
+    {
+      key: 'rejected',
+      label: 'Rejected',
+      icon: <X size={18} className="text-brand-error-red" />,
+      count: rejectedRequests.length,
+      status: 'REJECTED',
+      badgeColor: 'text-brand-error-red',
+      badgeBg: 'bg-red-100'
+    }
+  ];
+
+  // Render table rows
+  const renderTableRows = (requests: CorrectionRequest[], tab: TabType) => {
+    if (requests.length === 0) {
+      return (
+        <tr>
+          <td colSpan={6}>
+            <div className="p-8 text-center select-none space-y-2">
+              <ClipboardText size={32} className="text-brand-gray-neutral mx-auto opacity-50" />
+              <p className="text-brand-gray-neutral text-sm">No {tab} correction requests</p>
+            </div>
+          </td>
+        </tr>
+      );
+    }
+
+    const statusConfig = tabs.find(t => t.key === tab)!;
+
+    return requests.map((req) => {
+      const dateStr = new Date(req.createdAt).toLocaleDateString('en-US', {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      const oldItemName = req.oldValue?.menuItemName || 'Original Item';
+      const oldPrice = req.oldValue?.menuPrice || 0;
+      const newItemName = req.newValue?.menuItemName || 'Requested Item';
+      const newPrice = req.newValue?.menuPrice || 0;
+
+      return (
+        <tr key={req.id} className="hover:bg-brand-light-green/5 transition-colors">
+          <td className="p-4 text-brand-gray-neutral text-xs whitespace-nowrap">{dateStr}</td>
+          <td className="p-4 font-medium text-brand-dark-green whitespace-nowrap">
+            {req.employee || 'Employee'}
+          </td>
+          <td className="p-4 text-brand-error-red line-through whitespace-nowrap">
+            {oldItemName} ({oldPrice.toFixed(2)})
+          </td>
+          <td className="p-4 text-brand-dark-green font-semibold whitespace-nowrap">
+            {newItemName} ({newPrice.toFixed(2)})
+          </td>
+          <td className="p-4 text-brand-gray-neutral text-xs max-w-[200px]">
+            <div 
+              className="truncate cursor-help relative"
+              onMouseEnter={(e) => handleMouseEnter(e, req.reason)}
+              onMouseLeave={handleMouseLeave}
+            >
+              {req.reason}
+            </div>
+          </td>
+          <td className="p-4 text-center whitespace-nowrap select-none">
+            <span className={`text-[11px] font-semibold px-3 py-1 rounded-full ${statusConfig.badgeBg} ${statusConfig.badgeColor}`}>
+              {statusConfig.status}
+            </span>
+          </td>
+        </tr>
+      );
+    });
+  };
+
+  // Render data table for a tab
+  const renderTabContent = (tab: TabType) => {
+    const { data, totalItems, totalPages } = getPaginatedData(tab);
+
+    return (
+      <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
+        {/* Search Bar */}
+        <div className="px-4 py-3 border-b border-brand-light-green bg-[#F9FAFB]/30">
+          <div className="relative">
+            <MagnifyingGlass size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-gray-neutral" />
+            <input
+              type="text"
+              value={searchQuery[tab]}
+              onChange={(e) => setSearchQuery(prev => ({
+                ...prev,
+                [tab]: e.target.value
+              }))}
+              placeholder={`Search ${tab} requests...`}
+              className="w-full pl-10 pr-4 h-[40px] border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green placeholder-brand-gray-neutral/60"
+            />
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-brand-light-green bg-[#F9FAFB]/50 text-[13px] font-medium text-brand-dark-green select-none">
+                <th className="p-4">Submission Date</th>
+                <th className="p-4">Employee</th>
+                <th className="p-4">Original Selection</th>
+                <th className="p-4">Requested Selection</th>
+                <th className="p-4">Reason</th>
+                <th className="p-4 text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {renderTableRows(data, tab)}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        <Pagination
+          currentPage={currentPage[tab]}
+          totalPages={totalPages}
+          onPageChange={(page) => setCurrentPage(prev => ({
+            ...prev,
+            [tab]: page
+          }))}
+        />
+        
+        {/* Results count */}
+        <div className="px-4 py-2 text-xs text-brand-gray-neutral border-t border-gray-200 bg-gray-50/30">
+          Showing {data.length} of {totalItems} results
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -511,6 +804,30 @@ export const CorrectionRequests: React.FC = () => {
         </button>
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-brand-light-green/30">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-2.5 text-sm font-medium transition-all flex items-center gap-2 border-b-2 ${
+              activeTab === tab.key
+                ? 'border-brand-gold text-brand-dark-green'
+                : 'border-transparent text-brand-gray-neutral hover:text-brand-dark-green'
+            }`}
+          >
+            {tab.icon}
+            <span>{tab.label}</span>
+            <span className={`text-xs px-2 py-0.5 rounded-full ${
+              activeTab === tab.key ? 'bg-brand-light-green/30 text-brand-dark-green' : 'bg-gray-100 text-gray-500'
+            }`}>
+              {tab.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
       {loading ? (
         <div className="space-y-4">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -518,232 +835,7 @@ export const CorrectionRequests: React.FC = () => {
           ))}
         </div>
       ) : (
-        <>
-          {/* Pending Requests */}
-          <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
-            <div className="px-4 py-3 border-b border-brand-light-green bg-[#F9FAFB]/30">
-              <h3 className="text-brand-dark-green font-semibold flex items-center gap-2 select-none">
-                <Clock size={18} className="text-brand-gold" />
-                <span>Pending ({totalPending})</span>
-              </h3>
-            </div>
-            {totalPending === 0 ? (
-              <div className="p-8 text-center select-none space-y-2">
-                <ClipboardText size={32} className="text-brand-gray-neutral mx-auto opacity-50" />
-                <p className="text-brand-gray-neutral text-sm">No pending correction requests</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm border-collapse">
-                  <thead>
-                    <tr className="border-b border-brand-light-green bg-[#F9FAFB]/50 text-[13px] font-medium text-brand-dark-green select-none">
-                      <th className="p-4">Submission Date</th>
-                      <th className="p-4">Employee</th>
-                      <th className="p-4">Original Selection</th>
-                      <th className="p-4">Requested Selection</th>
-                      <th className="p-4">Reason</th>
-                      <th className="p-4 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {pendingRequests.map((req) => {
-                      const dateStr = new Date(req.createdAt).toLocaleDateString('en-US', {
-                        day: 'numeric',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      });
-
-                      const oldItemName = req.oldValue?.menuItemName || 'Original Item';
-                      const oldPrice = req.oldValue?.menuPrice || 0;
-                      const newItemName = req.newValue?.menuItemName || 'Requested Item';
-                      const newPrice = req.newValue?.menuPrice || 0;
-
-                      return (
-                        <tr key={req.id} className="hover:bg-brand-light-green/5 transition-colors">
-                          <td className="p-4 text-brand-gray-neutral text-xs whitespace-nowrap">{dateStr}</td>
-                          <td className="p-4 font-medium text-brand-dark-green whitespace-nowrap">
-                            {req.cashierName || 'Employee'}
-                          </td>
-                          <td className="p-4 text-brand-error-red line-through whitespace-nowrap">
-                            {oldItemName} ({oldPrice.toFixed(2)})
-                          </td>
-                          <td className="p-4 text-brand-dark-green font-semibold whitespace-nowrap">
-                            {newItemName} ({newPrice.toFixed(2)})
-                          </td>
-                          <td className="p-4 text-brand-gray-neutral text-xs max-w-[200px]">
-                            <div 
-                              className="truncate cursor-help relative"
-                              onMouseEnter={(e) => handleMouseEnter(e, req.reason)}
-                              onMouseLeave={handleMouseLeave}
-                            >
-                              {req.reason}
-                            </div>
-                          </td>
-                          <td className="p-4 text-center whitespace-nowrap select-none">
-                            <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-brand-light-green text-brand-dark-green">
-                              PENDING
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Approved Requests */}
-          <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
-            <div className="px-4 py-3 border-b border-brand-light-green bg-[#F9FAFB]/30">
-              <h3 className="text-brand-dark-green font-semibold flex items-center gap-2 select-none">
-                <Check size={18} className="text-green-600" />
-                <span>Approved ({totalApproved})</span>
-              </h3>
-            </div>
-            {totalApproved === 0 ? (
-              <div className="p-8 text-center select-none space-y-2">
-                <ClipboardText size={32} className="text-brand-gray-neutral mx-auto opacity-50" />
-                <p className="text-brand-gray-neutral text-sm">No approved correction requests</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm border-collapse">
-                  <thead>
-                    <tr className="border-b border-brand-light-green bg-[#F9FAFB]/50 text-[13px] font-medium text-brand-dark-green select-none">
-                      <th className="p-4">Submission Date</th>
-                      <th className="p-4">Employee</th>
-                      <th className="p-4">Original Selection</th>
-                      <th className="p-4">Requested Selection</th>
-                      <th className="p-4">Reason</th>
-                      <th className="p-4 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {approvedRequests.map((req) => {
-                      const dateStr = new Date(req.createdAt).toLocaleDateString('en-US', {
-                        day: 'numeric',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      });
-
-                      const oldItemName = req.oldValue?.menuItemName || 'Original Item';
-                      const oldPrice = req.oldValue?.menuPrice || 0;
-                      const newItemName = req.newValue?.menuItemName || 'Requested Item';
-                      const newPrice = req.newValue?.menuPrice || 0;
-
-                      return (
-                        <tr key={req.id} className="hover:bg-brand-light-green/5 transition-colors">
-                          <td className="p-4 text-brand-gray-neutral text-xs whitespace-nowrap">{dateStr}</td>
-                          <td className="p-4 font-medium text-brand-dark-green whitespace-nowrap">
-                            {req.cashierName || 'Employee'}
-                          </td>
-                          <td className="p-4 text-brand-error-red line-through whitespace-nowrap">
-                            {oldItemName} ({oldPrice.toFixed(2)})
-                          </td>
-                          <td className="p-4 text-brand-dark-green font-semibold whitespace-nowrap">
-                            {newItemName} ({newPrice.toFixed(2)})
-                          </td>
-                          <td className="p-4 text-brand-gray-neutral text-xs max-w-[200px]">
-                            <div 
-                              className="truncate cursor-help relative"
-                              onMouseEnter={(e) => handleMouseEnter(e, req.reason)}
-                              onMouseLeave={handleMouseLeave}
-                            >
-                              {req.reason}
-                            </div>
-                          </td>
-                          <td className="p-4 text-center whitespace-nowrap select-none">
-                            <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-brand-dark-green text-brand-white">
-                              APPROVED
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Rejected Requests */}
-          <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] overflow-hidden">
-            <div className="px-4 py-3 border-b border-brand-light-green bg-[#F9FAFB]/30">
-              <h3 className="text-brand-dark-green font-semibold flex items-center gap-2 select-none">
-                <X size={18} className="text-brand-error-red" />
-                <span>Rejected ({totalRejected})</span>
-              </h3>
-            </div>
-            {totalRejected === 0 ? (
-              <div className="p-8 text-center select-none space-y-2">
-                <ClipboardText size={32} className="text-brand-gray-neutral mx-auto opacity-50" />
-                <p className="text-brand-gray-neutral text-sm">No rejected correction requests</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm border-collapse">
-                  <thead>
-                    <tr className="border-b border-brand-light-green bg-[#F9FAFB]/50 text-[13px] font-medium text-brand-dark-green select-none">
-                      <th className="p-4">Submission Date</th>
-                      <th className="p-4">Employee</th>
-                      <th className="p-4">Original Selection</th>
-                      <th className="p-4">Requested Selection</th>
-                      <th className="p-4">Reason</th>
-                      <th className="p-4 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {rejectedRequests.map((req) => {
-                      const dateStr = new Date(req.createdAt).toLocaleDateString('en-US', {
-                        day: 'numeric',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      });
-
-                      const oldItemName = req.oldValue?.menuItemName || 'Original Item';
-                      const oldPrice = req.oldValue?.menuPrice || 0;
-                      const newItemName = req.newValue?.menuItemName || 'Requested Item';
-                      const newPrice = req.newValue?.menuPrice || 0;
-
-                      return (
-                        <tr key={req.id} className="hover:bg-brand-light-green/5 transition-colors">
-                          <td className="p-4 text-brand-gray-neutral text-xs whitespace-nowrap">{dateStr}</td>
-                          <td className="p-4 font-medium text-brand-dark-green whitespace-nowrap">
-                            {req.cashierName || 'Employee'}
-                          </td>
-                          <td className="p-4 text-brand-error-red line-through whitespace-nowrap">
-                            {oldItemName} ({oldPrice.toFixed(2)})
-                          </td>
-                          <td className="p-4 text-brand-dark-green font-semibold whitespace-nowrap">
-                            {newItemName} ({newPrice.toFixed(2)})
-                          </td>
-                          <td className="p-4 text-brand-gray-neutral text-xs max-w-[200px]">
-                            <div 
-                              className="truncate cursor-help relative"
-                              onMouseEnter={(e) => handleMouseEnter(e, req.reason)}
-                              onMouseLeave={handleMouseLeave}
-                            >
-                              {req.reason}
-                            </div>
-                          </td>
-                          <td className="p-4 text-center whitespace-nowrap select-none">
-                            <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-red-100 text-brand-error-red">
-                              REJECTED
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </>
+        renderTabContent(activeTab)
       )}
 
       {/* New Request Creation Wizard Modal */}

@@ -70,6 +70,7 @@ export interface CorrectionRequest {
   id: string;
   cashierName: string;
   transactionId: string;
+  employee: string;
   oldValue: {
     menuPrice: number;
     menuItemId: string;
