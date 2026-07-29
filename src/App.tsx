@@ -18,6 +18,7 @@ import { ResetPassword } from './pages/auth/ResetPassword';
 import { CashierFlow } from './pages/cashier/CashierFlow';
 import { TodayTransactions } from './pages/cashier/TodayTransactions';
 import { CorrectionRequests } from './pages/cashier/CorrectionRequests';
+import { GuestTransactionFlow } from './pages/cashier/GuestTransactionFlow';
 
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminAuditLogs } from './pages/admin/AuditLogs';
@@ -160,6 +161,7 @@ function App() {
         >
           <Route index element={<CashierFlow />} />
           <Route path="transactions" element={<TodayTransactions />} />
+          <Route path="guests" element={<GuestTransactionFlow />} />
           <Route path="corrections" element={<CorrectionRequests />} />
         </Route>
 

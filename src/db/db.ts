@@ -27,6 +27,7 @@ export interface MenuItem {
   isActive: boolean;
   effectiveDate: string;
   mealtype?: 'BREAKFAST' | 'LUNCH' | 'DINNER';
+  audience?: 'EMPLOYEE' | 'GUEST' | 'ALL';
 }
 
 export interface Transaction {

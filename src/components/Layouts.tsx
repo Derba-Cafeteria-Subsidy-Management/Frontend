@@ -165,6 +165,13 @@ export const CashierLayout: React.FC = () => {
             {t("Today's Transactions")}
           </Link>
           <Link
+            to="/cashier/guests"
+            className={`text-sm py-1 px-3 rounded hover:bg-[#F9FAFB] transition ${location.pathname === '/cashier/guests' ? 'text-brand-gold font-medium' : 'text-brand-dark-green'
+              }`}
+          >
+            {t('Guest Transactions')}
+          </Link>
+          <Link
             to="/cashier/corrections"
             className={`text-sm py-1 px-3 rounded hover:bg-[#F9FAFB] transition ${location.pathname === '/cashier/corrections' ? 'text-brand-gold font-medium' : 'text-brand-dark-green'
               }`}

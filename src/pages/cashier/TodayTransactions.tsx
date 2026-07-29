@@ -700,6 +700,7 @@ export const TodayTransactions: React.FC = () => {
     const timeStr = formatTime(transaction.createdAt || transaction.transactionDate);
     const dateStr = formatDate(transaction.transactionDate, transaction.createdAt);
     const statusBadge = getStatusBadge(transaction.correctionStatus);
+    const hasMeal = transaction.menuItem && transaction.menuItem !== 'N/A' && transaction.menuItem !== null;
     const hasDrink = transaction.drinkItem && transaction.drinkItem !== 'N/A' && transaction.drinkItem !== null;
     const isPending = transaction.correctionStatus === 'PENDING_CORRECTION';
 
@@ -740,14 +741,38 @@ export const TodayTransactions: React.FC = () => {
           </span>
         </td>
 
-        {/* Menu Item & Price Column (merged) */}
+        {/* Menu Item & Price Column (merged)
         <td className="p-4">
+          {hasMeal ? (
+            <div className="flex flex-col">
+              <span className="text-brand-dark-green font-medium">{transaction.menuItem}</span>
+              <span className="text-[11px] text-brand-gray-neutral">
+                {(transaction.menuPrice || 0).toFixed(2)} ETB
+              </span>
+            </div>
+          ):
+            <span className="text-brand-gray-neutral/50 text-xs">No drink</span>
+          }
           <div className="flex flex-col">
             <span className="text-brand-dark-green font-medium">{transaction.menuItem}</span>
             <span className="text-[11px] text-brand-gray-neutral">
               {(transaction.menuPrice || 0).toFixed(2)} ETB
             </span>
           </div>
+        </td> */}
+
+        {/* Drink & Drink Price Column */}
+        <td className="p-4">
+          {hasMeal ? (
+            <div className="flex flex-col">
+              <span className="text-brand-dark-green font-medium">{transaction.menuItem}</span>
+              <span className="text-[11px] text-brand-gray-neutral">
+                {(transaction.menuPrice || 0).toFixed(2)} ETB
+              </span>
+            </div>
+          ) : (
+            <span className="text-brand-gray-neutral/50 text-xs">No meal</span>
+          )}
         </td>
 
         {/* Drink & Drink Price Column */}

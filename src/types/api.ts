@@ -1,8 +1,18 @@
 export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'CASHIER';
 export type UserStatus = 'ACTIVE' | 'PENDING' | 'INACTIVE' | 'SUSPENDED';
-export type MealSession = 'BREAKFAST' | 'LUNCH' | 'DINNER' | 'DRINK';
+export type MealSession = 'BREAKFAST' | 'LUNCH' | 'DINNER';
 export type CorrectionStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type EmployeeStatus = 'ACTIVE' | 'INACTIVE';
+export type AudienceType = 'EMPLOYEE' | 'GUEST' | 'ALL';
+
+export interface MealSessionData {
+  session: MealSession;
+  mealConsumed: number;
+  drinkConsumed: number;
+  mealAvailable: boolean;
+  drinkAvailable: boolean;
+  completed: boolean;
+}
 
 export interface User {
   id: string;
@@ -18,15 +28,15 @@ export interface Employee {
   employeeNumber: string;
   fullName: string;
   department?: string;
-  status: EmployeeStatus;
-  photo: string | null;
-  fingerprintId?: string | null;
+  status: 'ACTIVE' | 'INACTIVE';
+  photo?: string;
+  fingerprintId?: string;
+  subsidyType?: 'NORMAL' | 'SPECIAL' | 'FULL_COMPANY';
+  employeeType?: 'NORMAL' | 'SHIFT';
+  groupId?: string;
+  mealsToday?: MealSessionData[] | { breakfast: boolean; lunch: boolean; dinner: boolean };
   createdAt?: string;
-  mealsToday?: {
-    breakfast: boolean;
-    lunch: boolean;
-    dinner: boolean;
-  };
+  updatedAt?: string;
 }
 
 export interface MenuItem {
@@ -36,6 +46,7 @@ export interface MenuItem {
   currentPrice: number;
   active: boolean;
   description?: string;
+  audience?: AudienceType;
 }
 
 export interface Transaction {
