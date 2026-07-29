@@ -17,13 +17,11 @@ import {
   Download,
   Check,
   Warning,
+  Users,
 } from '@phosphor-icons/react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import type { MenuItem } from '../../types/api';
-
-/** Meal session types supported by the system */
-type MealSession = 'BREAKFAST' | 'LUNCH' | 'DINNER' | 'DRINK';
 
 /**
  * MenuManagement Component
@@ -45,6 +43,8 @@ export const MenuManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   /** Search term for filtering menu items */
   const [searchTerm, setSearchTerm] = useState('');
+  /** Audience filter */
+  const [audienceFilter, setAudienceFilter] = useState<string>('');
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -59,14 +59,16 @@ export const MenuManagement: React.FC = () => {
   const [newItemName, setNewItemName] = useState('');
   const [newItemDescription, setNewItemDescription] = useState('');
   const [newItemPrice, setNewItemPrice] = useState('');
-  const [newItemMealtype, setNewItemMealtype] = useState<MealSession>('BREAKFAST');
+  const [newItemMealtype, setNewItemMealtype] = useState<string>('BREAKFAST');
+  const [newItemAudience, setNewItemAudience] = useState<string>('ALL');
 
   // Edit Item Modal
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
-  const [editMealtype, setEditMealtype] = useState<MealSession>('BREAKFAST');
+  const [editMealtype, setEditMealtype] = useState<string>('BREAKFAST');
+  const [editAudience, setEditAudience] = useState<string>('ALL');
 
   // Update Price Modal
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
@@ -115,6 +117,10 @@ export const MenuManagement: React.FC = () => {
 
       if (search.trim()) {
         params.query = search.trim();
+      }
+
+      if (audienceFilter && audienceFilter !== 'ALL') {
+        params.audience = audienceFilter;
       }
 
       const res = await axiosInstance.get('/api/menus', { params });
@@ -210,11 +216,19 @@ export const MenuManagement: React.FC = () => {
         clearTimeout(searchTimeout);
       }
     };
-  }, [searchTerm]);
+  }, [searchTerm, audienceFilter]);
 
   // ==========================================================================
   // HANDLERS
   // ==========================================================================
+
+  /**
+   * Handle audience filter change
+   */
+  const handleAudienceFilterChange = (value: string) => {
+    setAudienceFilter(value);
+    setCurrentPage(1);
+  };
 
   /**
    * Handle page change for pagination
@@ -242,7 +256,8 @@ export const MenuManagement: React.FC = () => {
       await axiosInstance.put(`/api/menus/${item.id}`, {
         name: item.name,
         mealtype: item.mealtype,
-        active: newStatus
+        active: newStatus,
+        audience: item.audience || 'ALL'
       });
 
       toast.success(`${item.name} is now ${newStatus ? 'Active' : 'Inactive'}`);
@@ -277,32 +292,29 @@ export const MenuManagement: React.FC = () => {
         name: newItemName.trim(),
         description: newItemDescription.trim() || undefined,
         mealtype: newItemMealtype,
-        price: priceNum
+        price: priceNum,
+        audience: newItemAudience === 'ALL' ? undefined : newItemAudience
       });
 
       if (res.data?.success) {
         // Get the created item from response or create a local one
-        const newItem = res.data.data || {
-          id: `temp-${Date.now()}`,
+        const newItem: MenuItem = {
+          id: res.data.data?.id || `temp-${Date.now()}`,
           name: newItemName.trim(),
           description: newItemDescription.trim() || undefined,
-          mealtype: newItemMealtype,
+          mealtype: newItemMealtype as any,
           currentPrice: priceNum,
-          active: true
-        };
-
-        // ✅ Ensure currentPrice is always set
-        const safeNewItem = {
-          ...newItem,
-          currentPrice: newItem.currentPrice ?? priceNum ?? 0,
+          active: true,
+          audience: newItemAudience === 'ALL' ? undefined : (newItemAudience as any),
+          ...res.data.data
         };
 
         // ✅ Seamless update - add to list without clearing existing items
         setMenuItems(prev => {
           // Check if item already exists (prevent duplicates)
-          const exists = prev.some(item => item.id === safeNewItem.id);
+          const exists = prev.some(item => item.id === newItem.id);
           if (exists) return prev;
-          return [safeNewItem, ...prev];
+          return [newItem, ...prev];
         });
         
         setTotalItems(prev => prev + 1);
@@ -316,6 +328,7 @@ export const MenuManagement: React.FC = () => {
         setNewItemDescription('');
         setNewItemPrice('');
         setNewItemMealtype('BREAKFAST');
+        setNewItemAudience('ALL');
       }
     } catch (err: any) {
       console.error('Error creating menu item:', err);
@@ -347,7 +360,8 @@ export const MenuManagement: React.FC = () => {
               ...i,
               name: editName.trim(),
               description: editDescription.trim() || undefined,
-              mealtype: editMealtype,
+              mealtype: editMealtype as any,
+              audience: editAudience === 'ALL' ? undefined : (editAudience as any)
             }
           : i
       )
@@ -358,7 +372,8 @@ export const MenuManagement: React.FC = () => {
       const res = await axiosInstance.put(`/api/menus/${editingItem.id}`, {
         name: editName.trim(),
         mealtype: editMealtype,
-        active: editingItem.active
+        active: editingItem.active,
+        audience: editAudience === 'ALL' ? undefined : editAudience
       });
 
       if (res.data?.success) {
@@ -643,19 +658,22 @@ export const MenuManagement: React.FC = () => {
         'Name': 'Shiro Wot',
         'Description': 'Traditional Ethiopian chickpea stew',
         'Price': 95.00,
-        'MealType': 'LUNCH'
+        'MealType': 'LUNCH',
+        'Audience': 'EMPLOYEE'
       },
       {
         'Name': 'Full Firfir',
         'Description': 'Firfir served with boiled eggs',
         'Price': 80.00,
-        'MealType': 'BREAKFAST'
+        'MealType': 'BREAKFAST',
+        'Audience': 'ALL'
       },
       {
         'Name': 'Juice',
         'Description': 'Fresh fruit juice',
         'Price': 40.00,
-        'MealType': 'DRINK'
+        'MealType': 'DRINK',
+        'Audience': 'GUEST'
       }
     ];
 
@@ -669,6 +687,34 @@ export const MenuManagement: React.FC = () => {
   // ==========================================================================
   // RENDER
   // ==========================================================================
+
+  // Get audience badge color
+  const getAudienceBadgeColor = (audience: string | undefined) => {
+    if (!audience || audience === 'ALL') {
+      return 'bg-gray-100 text-gray-600';
+    }
+    if (audience === 'EMPLOYEE') {
+      return 'bg-blue-100 text-blue-700';
+    }
+    if (audience === 'GUEST') {
+      return 'bg-purple-100 text-purple-700';
+    }
+    return 'bg-gray-100 text-gray-600';
+  };
+
+  // Get audience display name
+  const getAudienceDisplayName = (audience: string | undefined) => {
+    if (!audience || audience === 'ALL') {
+      return 'All';
+    }
+    if (audience === 'EMPLOYEE') {
+      return 'Employees';
+    }
+    if (audience === 'GUEST') {
+      return 'Guests';
+    }
+    return audience;
+  };
 
   return (
     <div className="space-y-6">
@@ -705,25 +751,43 @@ export const MenuManagement: React.FC = () => {
       </div>
 
       {/* ======================================================================
-          SEARCH BAR
+          FILTERS & SEARCH
           ====================================================================== */}
-      <div className="relative max-w-md">
-        <input
-          type="text"
-          placeholder="Search menu items by name or meal type..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full h-11 pl-10 pr-4 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green"
-        />
-        <MagnifyingGlass size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-gray-neutral" />
-        {isSearching && (
-          <div className="absolute right-3 top-1/2 -translate-y-1/2">
-            <svg className="animate-spin h-4 w-4 text-brand-gold" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-          </div>
-        )}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        {/* Search Bar */}
+        <div className="relative flex-1 max-w-md">
+          <input
+            type="text"
+            placeholder="Search menu items by name or meal type..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full h-11 pl-10 pr-4 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green"
+          />
+          <MagnifyingGlass size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-gray-neutral" />
+          {isSearching && (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              <svg className="animate-spin h-4 w-4 text-brand-gold" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+          )}
+        </div>
+
+        {/* Audience Filter Dropdown */}
+        <div className="flex items-center gap-2 shrink-0">
+          <Users size={18} className="text-brand-gray-neutral" />
+          <select
+            value={audienceFilter}
+            onChange={(e) => handleAudienceFilterChange(e.target.value)}
+            className="h-11 px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer min-w-[140px]"
+          >
+            <option value="">All Audiences</option>
+            <option value="ALL">All (Explicit)</option>
+            <option value="EMPLOYEE">Employees Only</option>
+            <option value="GUEST">Guests Only</option>
+          </select>
+        </div>
       </div>
 
       {/* ======================================================================
@@ -741,7 +805,7 @@ export const MenuManagement: React.FC = () => {
             <div className="text-brand-gray-neutral text-4xl block">🍽️</div>
           </div>
           <p className="text-brand-gray-neutral text-sm mt-2">
-            {searchTerm ? 'No menu items matching search criteria' : 'No menu items recorded'}
+            {searchTerm || audienceFilter ? 'No menu items matching filter criteria' : 'No menu items recorded'}
           </p>
         </div>
       ) : (
@@ -751,6 +815,7 @@ export const MenuManagement: React.FC = () => {
               const isActive = item.active !== false;
               // ✅ Safe price access with fallback to 0
               const price = item.currentPrice ?? 0;
+              const audience = item.audience || 'ALL';
               return (
                 <div
                   key={item.id}
@@ -774,6 +839,10 @@ export const MenuManagement: React.FC = () => {
                             : 'bg-gray-200 text-gray-500'
                         }`}>
                           {item.mealtype}
+                        </span>
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${getAudienceBadgeColor(audience)}`}>
+                          <Users size={10} className="inline mr-0.5" />
+                          {getAudienceDisplayName(audience)}
                         </span>
                         {!isActive && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-red-100 text-red-600 whitespace-nowrap">
@@ -809,7 +878,8 @@ export const MenuManagement: React.FC = () => {
                           setEditingItem(item);
                           setEditName(item.name);
                           setEditDescription(item.description || '');
-                          setEditMealtype(item.mealtype as MealSession);
+                          setEditMealtype(item.mealtype);
+                          setEditAudience(item.audience || 'ALL');
                           setShowEditModal(true);
                         }}
                         className="text-brand-gray-neutral hover:text-brand-gold transition-colors p-1 rounded opacity-0 group-hover:opacity-100 focus:opacity-100"
@@ -948,7 +1018,7 @@ export const MenuManagement: React.FC = () => {
                 </label>
                 <select
                   value={newItemMealtype}
-                  onChange={(e) => setNewItemMealtype(e.target.value as MealSession)}
+                  onChange={(e) => setNewItemMealtype(e.target.value)}
                   className="w-full h-[44px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer"
                 >
                   <option value="BREAKFAST">Breakfast</option>
@@ -956,6 +1026,24 @@ export const MenuManagement: React.FC = () => {
                   <option value="DINNER">Dinner</option>
                   <option value="DRINK">Drink</option>
                 </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[13px] font-medium text-brand-dark-green">
+                  Audience <span className="text-brand-error-red">*</span>
+                </label>
+                <select
+                  value={newItemAudience}
+                  onChange={(e) => setNewItemAudience(e.target.value)}
+                  className="w-full h-[44px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer"
+                >
+                  <option value="ALL">All (Everyone)</option>
+                  <option value="EMPLOYEE">Employees Only</option>
+                  <option value="GUEST">Guests Only</option>
+                </select>
+                <p className="text-[10px] text-brand-gray-neutral">
+                  Select who can see this menu item
+                </p>
               </div>
 
               <div className="space-y-1.5">
@@ -975,7 +1063,8 @@ export const MenuManagement: React.FC = () => {
                 <label className="block text-[13px] font-medium text-brand-dark-green">
                   Initial Price (ETB) <span className="text-brand-error-red">*</span>
                 </label>
-                <input                  type="number"
+                <input
+                  type="number"
                   step="0.01"
                   required
                   placeholder="e.g. 95.00"
@@ -1039,13 +1128,28 @@ export const MenuManagement: React.FC = () => {
                 </label>
                 <select
                   value={editMealtype}
-                  onChange={(e) => setEditMealtype(e.target.value as MealSession)}
+                  onChange={(e) => setEditMealtype(e.target.value)}
                   className="w-full h-[44px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer"
                 >
                   <option value="BREAKFAST">Breakfast</option>
                   <option value="LUNCH">Lunch</option>
                   <option value="DINNER">Dinner</option>
                   <option value="DRINK">Drink</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[13px] font-medium text-brand-dark-green">
+                  Audience <span className="text-brand-error-red">*</span>
+                </label>
+                <select
+                  value={editAudience}
+                  onChange={(e) => setEditAudience(e.target.value)}
+                  className="w-full h-[44px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white cursor-pointer"
+                >
+                  <option value="ALL">All (Everyone)</option>
+                  <option value="EMPLOYEE">Employees Only</option>
+                  <option value="GUEST">Guests Only</option>
                 </select>
               </div>
 
@@ -1112,6 +1216,10 @@ export const MenuManagement: React.FC = () => {
               <div className="flex justify-between">
                 <span className="text-brand-gray-neutral">Current Price:</span>
                 <span className="text-brand-dark-green font-semibold">{(selectedItem.currentPrice ?? 0).toFixed(2)} ETB</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-brand-gray-neutral">Audience:</span>
+                <span className="text-brand-dark-green font-semibold">{getAudienceDisplayName(selectedItem.audience)}</span>
               </div>
             </div>
 
@@ -1276,6 +1384,10 @@ export const MenuManagement: React.FC = () => {
                   <span className="text-brand-gray-neutral">Current Price:</span>
                   <span className="text-brand-dark-green font-semibold">{(itemToDelete.currentPrice ?? 0).toFixed(2)} ETB</span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-brand-gray-neutral">Audience:</span>
+                  <span className="text-brand-dark-green font-semibold">{getAudienceDisplayName(itemToDelete.audience)}</span>
+                </div>
               </div>
             </div>
 
@@ -1429,6 +1541,11 @@ export const MenuManagement: React.FC = () => {
                         <span className="bg-brand-light-green/30 text-brand-dark-green text-[10px] px-1.5 rounded font-bold uppercase whitespace-nowrap">
                           {row.mealtype || 'LUNCH'}
                         </span>
+                        {row.audience && (
+                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap ${getAudienceBadgeColor(row.audience)}`}>
+                            {getAudienceDisplayName(row.audience)}
+                          </span>
+                        )}
                       </div>
                     ))}
                     {importData.length > 5 && (
