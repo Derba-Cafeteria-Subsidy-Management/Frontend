@@ -51,8 +51,8 @@ interface PaginationState {
  * Flow Steps:
  * 1. Employee Identification (Manual ID or Fingerprint)
  * 2. Session Selection (Breakfast/Lunch/Dinner)
- * 3. Menu Item Selection (with search and pagination)
- * 4. Drink Selection (Optional - can be skipped)
+ * 3. Menu Item Selection (with search and pagination - can be skipped)
+ * 4. Drink Selection (Optional if meal selected, Required if meal skipped)
  * 5. Transaction Review and Submission
  * 6. Success Receipt
  */
@@ -192,11 +192,14 @@ export const CashierFlow: React.FC = () => {
 
   /**
    * Fetch subsidy rates when reaching step 5
+   * Uses the policy query parameter: DEFAULT or FULL_COMPANY
    */
   useEffect(() => {
     if (cashierStep === 5) {
       axiosInstance
-        .get('/api/subsidy')
+        .get('/api/subsidy', {
+          params: { policy: 'DEFAULT' }
+        })
         .then((res) => {
           if (!isMountedRef.current) return;
           if (res.data?.success && res.data?.data) {
@@ -213,6 +216,7 @@ export const CashierFlow: React.FC = () => {
           } else {
             console.error('Failed to fetch subsidy rates:', err);
           }
+          // Keep default values (40/60)
         });
     }
   }, [cashierStep]);
@@ -248,6 +252,67 @@ export const CashierFlow: React.FC = () => {
   }, [cashierStep, countdown, resetCashierFlow]);
 
   // ==========================================================================
+  // HELPER FUNCTIONS
+  // ==========================================================================
+
+  /**
+   * Get current session meal/drink availability
+   */
+  const getCurrentSessionAvailability = () => {
+    if (!selectedEmployee || !selectedSession) {
+      return { mealAvailable: true, drinkAvailable: true };
+    }
+    
+    const mealsToday = selectedEmployee.mealsToday;
+    
+    if (Array.isArray(mealsToday)) {
+      const currentSessionMeals = mealsToday.find(
+        (meal: any) => meal.session === selectedSession.toUpperCase()
+      );
+      
+      if (!currentSessionMeals) {
+        return { mealAvailable: true, drinkAvailable: true };
+      }
+      
+      return {
+        mealAvailable: currentSessionMeals.mealConsumed < 1 && currentSessionMeals.mealAvailable,
+        drinkAvailable: currentSessionMeals.drinkConsumed < 1 && currentSessionMeals.drinkAvailable,
+      };
+    }
+    
+    return { mealAvailable: true, drinkAvailable: true };
+  };
+
+  /**
+   * Get detailed session status for display
+   */
+  const getSessionDetailedStatus = (sessionName: string) => {
+    if (!selectedEmployee?.mealsToday || !Array.isArray(selectedEmployee.mealsToday)) {
+      return null;
+    }
+    
+    const sessionData = selectedEmployee.mealsToday.find(
+      (meal: any) => meal.session === sessionName.toUpperCase()
+    );
+    
+    if (!sessionData) return null;
+    
+    const mealConsumed = sessionData.mealConsumed >= 1;
+    const drinkConsumed = sessionData.drinkConsumed >= 1;
+    
+    return { mealConsumed, drinkConsumed };
+  };
+
+  /**
+   * Check if the selected employee is a guest
+   */
+  const isGuest = () => {
+    if (!selectedEmployee) return false;
+    return selectedEmployee.employeeNumber?.toLowerCase().includes('guest') || 
+           selectedEmployee.fullName?.toLowerCase().includes('guest');
+  };
+
+  // ==========================================================================
   // STEP 2: SESSION MANAGEMENT
   // ==========================================================================
 
@@ -273,9 +338,35 @@ export const CashierFlow: React.FC = () => {
     };
 
     if (employee.mealsToday) {
-      if (employee.mealsToday.breakfast === true) status.Breakfast = 'Consumed';
-      if (employee.mealsToday.lunch === true) status.Lunch = 'Consumed';
-      if (employee.mealsToday.dinner === true) status.Dinner = 'Consumed';
+      // Handle the new mealsToday format (array of objects)
+      if (Array.isArray(employee.mealsToday)) {
+        employee.mealsToday.forEach((mealSession: any) => {
+          // Check if both meal and drink are consumed for this session
+          const bothConsumed = mealSession.mealConsumed >= 1 && mealSession.drinkConsumed >= 1;
+          
+          if (bothConsumed) {
+            // Both meal and drink consumed - session is fully consumed
+            switch (mealSession.session) {
+              case 'BREAKFAST':
+                status.Breakfast = 'Consumed';
+                break;
+              case 'LUNCH':
+                status.Lunch = 'Consumed';
+                break;
+              case 'DINNER':
+                status.Dinner = 'Consumed';
+                break;
+            }
+          }
+          // If only one is consumed, session remains available for the other
+        });
+      } else {
+        // Legacy format handling
+        const meals = employee.mealsToday as any;
+        if (meals.breakfast === true) status.Breakfast = 'Consumed';
+        if (meals.lunch === true) status.Lunch = 'Consumed';
+        if (meals.dinner === true) status.Dinner = 'Consumed';
+      }
     }
 
     setSessionStatus(status);
@@ -472,7 +563,8 @@ export const CashierFlow: React.FC = () => {
   };
 
   /**
-   * Fetch ALL menu items - excluding drinks
+   * Fetch meal items from API with audience filter
+   * Excludes drinks by filtering out items with mealtype 'DRINK'
    */
   useEffect(() => {
     if (cashierStep === 3) {
@@ -482,9 +574,18 @@ export const CashierFlow: React.FC = () => {
         let currentPage = 1;
         const pageSize = 50;
 
+        // Determine audience filter based on employee type
+        const isGuestUser = isGuest();
+        const audienceFilter = isGuestUser ? 'GUEST' : 'EMPLOYEE';
+
         try {
+          // Fetch all active menu items with audience filter
           const firstRes = await axiosInstance.get('/api/menus/active', {
-            params: { page: currentPage, pageSize: pageSize },
+            params: { 
+              page: currentPage, 
+              pageSize: pageSize,
+              audience: audienceFilter,
+            },
           });
 
           if (!isMountedRef.current) return;
@@ -504,7 +605,11 @@ export const CashierFlow: React.FC = () => {
               for (let page = 2; page <= totalPages; page++) {
                 pagePromises.push(
                   axiosInstance.get('/api/menus/active', {
-                    params: { page: page, pageSize: pageSize },
+                    params: { 
+                      page: page, 
+                      pageSize: pageSize,
+                      audience: audienceFilter,
+                    },
                   })
                 );
               }
@@ -520,37 +625,21 @@ export const CashierFlow: React.FC = () => {
               }
             }
 
-            // Filter out drink items
-            const mappedItems = allItems
-              .map((item: any) => ({
-                id: item.id,
-                name: item.name,
-                description: item.description || '',
-                mealtype: item.mealtype || item.mealType || '',
-                currentPrice: item.currentPrice || item.price || 0,
-                active: item.active !== undefined ? item.active : true,
-              }))
-              .filter((item: MenuItem) => {
-                const lowerName = item.name.toLowerCase();
-                const lowerDesc = item.description?.toLowerCase() || '';
-                const lowerMealtype = item.mealtype?.toLowerCase() || '';
-                
-                // Exclude drink items
-                return !(
-                  lowerName.includes('drink') ||
-                  lowerName.includes('juice') ||
-                  lowerName.includes('soda') ||
-                  lowerName.includes('water') ||
-                  lowerName.includes('coffee') ||
-                  lowerName.includes('tea') ||
-                  lowerName.includes('milk') ||
-                  lowerName.includes('smoothie') ||
-                  lowerDesc.includes('drink') ||
-                  lowerDesc.includes('beverage') ||
-                  lowerMealtype === 'drink' ||
-                  lowerMealtype === 'beverage'
-                );
-              });
+            // Filter out drink items (mealtype === 'DRINK')
+            const mealItems = allItems.filter((item: any) => {
+              const mealType = (item.mealtype || item.mealType || '').toUpperCase();
+              return mealType !== 'DRINK';
+            });
+
+            // Map items to MenuItem format
+            const mappedItems = mealItems.map((item: any) => ({
+              id: item.id,
+              name: item.name,
+              description: item.description || '',
+              mealtype: item.mealtype || item.mealType || '',
+              currentPrice: item.currentPrice || item.price || 0,
+              active: item.active !== undefined ? item.active : true,
+            }));
 
             if (!isMountedRef.current) return;
 
@@ -569,14 +658,32 @@ export const CashierFlow: React.FC = () => {
       };
       fetchMenus();
     }
-  }, [cashierStep]);
+  }, [cashierStep, selectedEmployee]);
+
+  // Auto-redirect from step 3 if meal is not available
+  useEffect(() => {
+    if (cashierStep === 3 && selectedEmployee) {
+      const { mealAvailable, drinkAvailable } = getCurrentSessionAvailability();
+      
+      if (!mealAvailable) {
+        if (drinkAvailable) {
+          toast('Meal already consumed for this session. Please select a drink.', { icon: 'ℹ️' });
+          goToStep(4);
+        } else {
+          toast.error('Both meal and drink already consumed for this session');
+          goToStep(2);
+        }
+      }
+    }
+  }, [cashierStep, selectedEmployee]);
 
   // ==========================================================================
   // STEP 4: DRINK SELECTION
   // ==========================================================================
 
   /**
-   * Fetch drink items from the menu
+   * Fetch drink items from the API with audience filter
+   * Only fetches items with mealtype 'DRINK'
    */
   const fetchDrinkItems = async () => {
     setIsLoadingDrinks(true);
@@ -584,9 +691,17 @@ export const CashierFlow: React.FC = () => {
     let currentPage = 1;
     const pageSize = 50;
 
+    // Determine audience filter based on employee type
+    const isGuestUser = isGuest();
+    const audienceFilter = isGuestUser ? 'GUEST' : 'EMPLOYEE';
+
     try {
       const firstRes = await axiosInstance.get('/api/menus/active', {
-        params: { page: currentPage, pageSize: pageSize },
+        params: { 
+          page: currentPage, 
+          pageSize: pageSize,
+          audience: audienceFilter,
+        },
       });
 
       if (!isMountedRef.current) return;
@@ -606,7 +721,11 @@ export const CashierFlow: React.FC = () => {
           for (let page = 2; page <= totalPages; page++) {
             pagePromises.push(
               axiosInstance.get('/api/menus/active', {
-                params: { page: page, pageSize: pageSize },
+                params: { 
+                  page: page, 
+                  pageSize: pageSize,
+                  audience: audienceFilter,
+                },
               })
             );
           }
@@ -622,36 +741,21 @@ export const CashierFlow: React.FC = () => {
           }
         }
 
-        // Filter for drink items
-        const mappedDrinks = allDrinks
-          .map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            description: item.description || '',
-            mealtype: item.mealtype || item.mealType || '',
-            currentPrice: item.currentPrice || item.price || 0,
-            active: item.active !== undefined ? item.active : true,
-          }))
-          .filter((item: MenuItem) => {
-            const lowerName = item.name.toLowerCase();
-            const lowerDesc = item.description?.toLowerCase() || '';
-            const lowerMealtype = item.mealtype?.toLowerCase() || '';
-            
-            return (
-              lowerName.includes('drink') ||
-              lowerName.includes('juice') ||
-              lowerName.includes('soda') ||
-              lowerName.includes('water') ||
-              lowerName.includes('coffee') ||
-              lowerName.includes('tea') ||
-              lowerName.includes('milk') ||
-              lowerName.includes('smoothie') ||
-              lowerDesc.includes('drink') ||
-              lowerDesc.includes('beverage') ||
-              lowerMealtype === 'drink' ||
-              lowerMealtype === 'beverage'
-            );
-          });
+        // Filter for drink items only (mealtype === 'DRINK')
+        const drinkItemsOnly = allDrinks.filter((item: any) => {
+          const mealType = (item.mealtype || item.mealType || '').toUpperCase();
+          return mealType === 'DRINK';
+        });
+
+        // Map items to MenuItem format
+        const mappedDrinks = drinkItemsOnly.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          description: item.description || '',
+          mealtype: item.mealtype || item.mealType || '',
+          currentPrice: item.currentPrice || item.price || 0,
+          active: item.active !== undefined ? item.active : true,
+        }));
 
         if (!isMountedRef.current) return;
 
@@ -728,7 +832,19 @@ export const CashierFlow: React.FC = () => {
     if (cashierStep === 4) {
       fetchDrinkItems();
     }
-  }, [cashierStep]);
+  }, [cashierStep, selectedEmployee]);
+
+  // Auto-redirect from step 4 if drink is not available but meal is selected
+  useEffect(() => {
+    if (cashierStep === 4 && selectedEmployee && selectedMenu) {
+      const { drinkAvailable } = getCurrentSessionAvailability();
+      
+      if (!drinkAvailable) {
+        setSelectedDrink(null);
+        goToStep(5);
+      }
+    }
+  }, [cashierStep, selectedEmployee, selectedMenu]);
 
   // ==========================================================================
   // STEP 5: TRANSACTION SUBMISSION
@@ -736,37 +852,47 @@ export const CashierFlow: React.FC = () => {
 
   /**
    * Submit transaction to backend
-   * Updated to match the new API format with items array
+   * Handles cases where meal, drink, or both may be skipped
    */
   const handleSubmitTransaction = async () => {
-    if (!selectedEmployee || !selectedSession || !selectedMenu) {
-      toast.error('Missing required information');
+    // Validate required data
+    if (!selectedEmployee || !selectedSession) {
+      toast.error('Missing required employee or session information');
+      return;
+    }
+
+    // Build items array - only include items with valid IDs
+    const items: { menuItemId: string; quantity: number }[] = [];
+
+    // Add meal if selected and has valid ID
+    if (selectedMenu?.id) {
+      items.push({
+        menuItemId: selectedMenu.id,
+        quantity: 1,
+      });
+    }
+
+    // Add drink if selected and has valid ID
+    if (selectedDrink?.id) {
+      items.push({
+        menuItemId: selectedDrink.id,
+        quantity: 1,
+      });
+    }
+
+    // Validate at least one item was selected
+    if (items.length === 0) {
+      toast.error('Please select at least a meal or a drink before submitting');
       return;
     }
 
     try {
       const mealSession = selectedSession.toUpperCase() as MealSession;
 
-      // Build items array with quantity 1 for each selected item
-      const items = [
-        {
-          menuItemId: selectedMenu.id,
-          quantity: 1
-        }
-      ];
-
-      // Add drink if selected
-      if (selectedDrink) {
-        items.push({
-          menuItemId: selectedDrink.id,
-          quantity: 1
-        });
-      }
-
       const transactionData = {
         employeeId: selectedEmployee.id,
         mealSession: mealSession,
-        items: items
+        items: items,
       };
 
       console.log('Submitting transaction:', transactionData);
@@ -776,24 +902,45 @@ export const CashierFlow: React.FC = () => {
       if (!isMountedRef.current) return;
 
       if (response.data?.success) {
-        const transactionId = response.data.data?.transactionId || response.data.data?.id || 'TXN-UNKNOWN';
+        const transactionId =
+          response.data.data?.transactionId || 
+          response.data.data?.id || 
+          'TXN-UNKNOWN';
+        
         toast.success(`Transaction successful! ID: ${transactionId}`);
         goToStep(6);
       } else {
-        toast.error('Failed to submit transaction');
+        toast.error(response.data?.message || 'Failed to submit transaction');
       }
     } catch (err: any) {
       if (!isMountedRef.current) return;
+      
       console.error('Transaction error:', err);
 
-      if (err.response?.status === 409) {
-        toast.error('Employee has already consumed this meal session today');
-      } else if (err.response?.status === 404) {
-        toast.error('Employee or menu item not found');
-      } else if (err.response?.status === 400) {
-        toast.error(err.response?.data?.message || 'Invalid transaction data');
-      } else {
-        toast.error(err.response?.data?.message || 'Failed to submit transaction');
+      // Extract error message from response
+      const errorMessage = 
+        err.response?.data?.message || 
+        err.message || 
+        'Failed to submit transaction. Please check your inputs.';
+
+      // Handle specific error status codes
+      switch (err.response?.status) {
+        case 400:
+          // Display backend validation message (e.g., group schedule mismatches)
+          toast.error(errorMessage);
+          break;
+        case 409:
+          toast.error('Employee has already consumed this meal session today');
+          break;
+        case 404:
+          toast.error('Employee or menu item not found');
+          break;
+        case 403:
+          toast.error('You do not have permission to perform this action');
+          break;
+        default:
+          toast.error(errorMessage);
+          break;
       }
     }
   };
@@ -972,7 +1119,7 @@ export const CashierFlow: React.FC = () => {
               <div className="flex gap-3 mt-1 text-[10px] text-brand-gray-neutral">
                 <span className="flex items-center gap-1">
                   <Coffee size={12} />
-                  {selectedEmployee.mealsToday?.breakfast ? (
+                  {sessionStatus.Breakfast === 'Consumed' ? (
                     <span className="text-brand-error-red">Consumed</span>
                   ) : (
                     <span className="text-brand-dark-green">Available</span>
@@ -980,7 +1127,7 @@ export const CashierFlow: React.FC = () => {
                 </span>
                 <span className="flex items-center gap-1">
                   <Sun size={12} />
-                  {selectedEmployee.mealsToday?.lunch ? (
+                  {sessionStatus.Lunch === 'Consumed' ? (
                     <span className="text-brand-error-red">Consumed</span>
                   ) : (
                     <span className="text-brand-dark-green">Available</span>
@@ -988,7 +1135,7 @@ export const CashierFlow: React.FC = () => {
                 </span>
                 <span className="flex items-center gap-1">
                   <Moon size={12} />
-                  {selectedEmployee.mealsToday?.dinner ? (
+                  {sessionStatus.Dinner === 'Consumed' ? (
                     <span className="text-brand-error-red">Consumed</span>
                   ) : (
                     <span className="text-brand-dark-green">Available</span>
@@ -1024,6 +1171,8 @@ export const CashierFlow: React.FC = () => {
                 const isLocked = status === 'Locked';
                 const isDisabled = isConsumed || isLocked;
                 const isAvailable = status === 'Available';
+                const sessionDetails = getSessionDetailedStatus(sessionName);
+                
                 const statusInfo = {
                   message: isConsumed ? 'Already consumed today' : isLocked ? 'Session is locked' : 'Available for registration',
                   color: isConsumed ? 'bg-brand-error-red/10 text-brand-error-red' : isLocked ? 'bg-brand-warning/10 text-brand-warning' : 'bg-brand-dark-green/10 text-brand-dark-green',
@@ -1036,7 +1185,18 @@ export const CashierFlow: React.FC = () => {
                     onClick={() => {
                       if (isAvailable) {
                         setSession(sessionName);
-                        goToStep(3);
+                        
+                        // Check what's available for this session
+                        const { mealAvailable, drinkAvailable } = getCurrentSessionAvailability();
+                        
+                        // If meal is not available, skip to drinks
+                        if (!mealAvailable && drinkAvailable) {
+                          goToStep(4);
+                        } else if (mealAvailable) {
+                          goToStep(3);
+                        } else {
+                          toast.error('No items available for this session');
+                        }
                       } else {
                         toast.error(`${sessionName} is not available for this employee.`);
                       }
@@ -1059,6 +1219,13 @@ export const CashierFlow: React.FC = () => {
                           {isConsumed ? <XCircle size={20} className="text-brand-error-red" /> : isLocked ? <Lock size={20} className="text-brand-warning" /> : <Check size={20} className="text-brand-dark-green" />}
                           {statusInfo.message}
                         </span>
+                        {sessionDetails && !isConsumed && (
+                          <span className="text-[10px] text-brand-gray-neutral mt-1 block">
+                            {sessionDetails.mealConsumed && '• Meal consumed '}
+                            {sessionDetails.drinkConsumed && '• Drink consumed '}
+                            {!sessionDetails.mealConsumed && !sessionDetails.drinkConsumed && '• Nothing consumed yet'}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${statusInfo.color}`}>
@@ -1080,6 +1247,40 @@ export const CashierFlow: React.FC = () => {
   if (cashierStep === 3) {
     if (!selectedEmployee || !selectedSession) return null;
 
+    const { mealAvailable, drinkAvailable } = getCurrentSessionAvailability();
+    const isGuestUser = isGuest();
+    
+    // If meal is not available, show message and redirect
+    if (!mealAvailable) {
+      return (
+        <div className="w-full max-w-[600px] mx-auto mt-4 select-none">
+          <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] shadow-[0_4px_16px_rgba(0,0,0,0.03)] p-8 space-y-6">
+            <div className="text-center py-12 text-brand-gray-neutral">
+              <div className="flex justify-center mb-3">
+                <Coffee size={48} className="text-brand-gray-neutral/30" />
+              </div>
+              <p className="text-sm">Meal already consumed for this session</p>
+              {drinkAvailable ? (
+                <button
+                  onClick={() => goToStep(4)}
+                  className="mt-4 px-6 py-2 bg-brand-gold text-brand-white rounded-[8px] hover:opacity-90 transition"
+                >
+                  Continue to Drinks
+                </button>
+              ) : (
+                <button
+                  onClick={() => goToStep(2)}
+                  className="mt-4 px-6 py-2 bg-brand-gray-neutral text-brand-white rounded-[8px] hover:opacity-90 transition"
+                >
+                  Go Back
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     const { currentPage, totalPages, itemsPerPage, totalItems } = menuPagination;
     const startIndex = (currentPage - 1) * itemsPerPage + 1;
     const endIndex = Math.min(currentPage * itemsPerPage, totalItems);
@@ -1097,12 +1298,15 @@ export const CashierFlow: React.FC = () => {
               <ArrowLeft size={20} />
             </button>
             <div>
-              <h2 className="text-[18px] font-semibold text-brand-dark-green">Select Main Meal</h2>
+              <h2 className="text-[18px] font-semibold text-brand-dark-green">
+                {isGuestUser ? 'Select Guest Menu' : 'Select Main Meal'}
+              </h2>
               <p className="text-brand-gray-neutral text-xs">
-                Choose your main menu item
+                {isGuestUser ? 'Choose from guest menu items' : 'Choose your main menu item or skip to drinks'}
               </p>
               <p className="text-[11px] text-brand-gray-neutral mt-1">
                 {totalItems} items available • Session: <strong className="text-brand-dark-green">{selectedSession}</strong>
+                {isGuestUser && <span className="ml-2 text-brand-gold">(Guest Menu)</span>}
               </p>
             </div>
           </div>
@@ -1133,6 +1337,17 @@ export const CashierFlow: React.FC = () => {
               <p className="text-sm">
                 {menuSearchTerm ? 'No menu items match your search' : 'No menu items available'}
               </p>
+              {drinkAvailable && !isGuestUser && (
+                <button
+                  onClick={() => {
+                    setMenu(null);
+                    goToStep(4);
+                  }}
+                  className="mt-4 text-brand-gold font-medium text-sm hover:underline"
+                >
+                  Skip meal and go to drinks
+                </button>
+              )}
             </div>
           ) : (
             <>
@@ -1149,7 +1364,7 @@ export const CashierFlow: React.FC = () => {
                     <div className="flex-1">
                       <span className="font-semibold text-sm block">{item.name}</span>
                       <span className="text-[11px] text-brand-gray-neutral">
-                        {item.description || 'Cafeteria Standard Option'}
+                        {item.description || (isGuestUser ? 'Guest Menu Option' : 'Cafeteria Standard Option')}
                       </span>
                     </div>
                     <span className="font-bold text-sm text-brand-gold ml-4">
@@ -1195,6 +1410,19 @@ export const CashierFlow: React.FC = () => {
               )}
             </>
           )}
+
+          {/* Skip meal button - only show if drinks are available and user is not a guest */}
+          {!isGuestUser && drinkAvailable && displayedMenuItems.length > 0 && (
+            <button
+              onClick={() => {
+                setMenu(null);
+                goToStep(4);
+              }}
+              className="w-full h-[44px] border border-dashed border-gray-300 text-brand-gray-neutral font-medium text-sm rounded-[8px] hover:bg-gray-50 transition"
+            >
+              Skip meal and go to drinks
+            </button>
+          )}
         </div>
       </div>
     );
@@ -1204,7 +1432,46 @@ export const CashierFlow: React.FC = () => {
   // STEP 4: DRINK SELECTION
   // --------------------------------------------------------------------------
   if (cashierStep === 4) {
-    if (!selectedEmployee || !selectedSession || !selectedMenu) return null;
+    if (!selectedEmployee || !selectedSession) return null;
+
+    const { drinkAvailable } = getCurrentSessionAvailability();
+    const isGuestUser = isGuest();
+    
+    // Determine if drinks can be skipped (only if a meal IS selected and not a guest)
+    const isDrinkMandatory = !selectedMenu || isGuestUser;
+    const canSkipDrinks = selectedMenu !== null && drinkAvailable && !isGuestUser;
+
+    // If drink is not available and no meal selected, go back
+    if (!drinkAvailable && !selectedMenu) {
+      toast.error('No items available for this session');
+      goToStep(2);
+      return null;
+    }
+
+    // If drink is not available but meal is selected, show message
+    if (!drinkAvailable && selectedMenu) {
+      return (
+        <div className="w-full max-w-[600px] mx-auto mt-4 select-none">
+          <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] shadow-[0_4px_16px_rgba(0,0,0,0.03)] p-8 space-y-6">
+            <div className="text-center py-12 text-brand-gray-neutral">
+              <div className="flex justify-center mb-3">
+                <span className="text-6xl">🥤</span>
+              </div>
+              <p className="text-sm">Drink already consumed for this session</p>
+              <button
+                onClick={() => {
+                  setSelectedDrink(null);
+                  goToStep(5);
+                }}
+                className="mt-4 px-6 py-2 bg-brand-gold text-brand-white rounded-[8px] hover:opacity-90 transition"
+              >
+                Continue to Review
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     const { currentPage, totalPages, itemsPerPage, totalItems } = drinkPagination;
     const startIndex = (currentPage - 1) * itemsPerPage + 1;
@@ -1216,21 +1483,46 @@ export const CashierFlow: React.FC = () => {
           <div className="flex items-center gap-4 border-b border-gray-100 pb-4">
             <button
               onClick={() => {
-                setMenu(null);
-                goToStep(3);
+                setSelectedDrink(null);
+                
+                // If meal was available, go back to step 3, otherwise go to step 2
+                const { mealAvailable } = getCurrentSessionAvailability();
+                if (mealAvailable) {
+                  goToStep(3);
+                } else {
+                  goToStep(2);
+                }
               }}
               className="text-brand-gray-neutral hover:text-brand-dark-green"
             >
               <ArrowLeft size={20} />
             </button>
             <div>
-              <h2 className="text-[18px] font-semibold text-brand-dark-green">Select a Drink</h2>
+              <h2 className="text-[18px] font-semibold text-brand-dark-green">
+                {isDrinkMandatory ? 'Select a Drink (Required)' : 'Select a Drink (Optional)'}
+              </h2>
               <p className="text-brand-gray-neutral text-xs">
-                Choose a drink to accompany your meal <span className="text-brand-gray-neutral/60">(Optional)</span>
+                {isDrinkMandatory 
+                  ? isGuestUser 
+                    ? 'A drink selection is required for guest transactions' 
+                    : 'A drink selection is required when no meal is selected'
+                  : 'Choose a drink to accompany your meal or skip this step'}
               </p>
-              <p className="text-[11px] text-brand-gray-neutral mt-1">
-                Meal selected: <strong className="text-brand-dark-green">{selectedMenu.name}</strong>
-              </p>
+              {selectedMenu && (
+                <p className="text-[11px] text-brand-gray-neutral mt-1">
+                  Meal selected: <strong className="text-brand-dark-green">{selectedMenu.name}</strong>
+                </p>
+              )}
+              {!selectedMenu && !isGuestUser && (
+                <p className="text-[11px] text-brand-error-red mt-1">
+                  No meal selected - drink is mandatory
+                </p>
+              )}
+              {isGuestUser && (
+                <p className="text-[11px] text-brand-gold mt-1">
+                  Guest transaction - drink is required
+                </p>
+              )}
             </div>
           </div>
 
@@ -1260,15 +1552,22 @@ export const CashierFlow: React.FC = () => {
               <p className="text-sm">
                 {drinkSearchTerm ? 'No drinks match your search' : 'No drink items available'}
               </p>
-              <button
-                onClick={() => {
-                  setSelectedDrink(null);
-                  goToStep(5);
-                }}
-                className="mt-4 text-brand-gold font-medium text-sm hover:underline"
-              >
-                Skip drink selection
-              </button>
+              {canSkipDrinks && (
+                <button
+                  onClick={() => {
+                    setSelectedDrink(null);
+                    goToStep(5);
+                  }}
+                  className="mt-4 text-brand-gold font-medium text-sm hover:underline"
+                >
+                  Skip drink selection
+                </button>
+              )}
+              {!canSkipDrinks && (
+                <p className="text-xs text-brand-error-red mt-2">
+                  A drink selection is mandatory for this transaction
+                </p>
+              )}
             </div>
           ) : (
             <>
@@ -1336,16 +1635,26 @@ export const CashierFlow: React.FC = () => {
             </>
           )}
 
-          {/* Skip button */}
-          <button
-            onClick={() => {
-              setSelectedDrink(null);
-              goToStep(5);
-            }}
-            className="w-full h-[44px] border border-dashed border-gray-300 text-brand-gray-neutral font-medium text-sm rounded-[8px] hover:bg-gray-50 transition"
-          >
-            Skip drink selection
-          </button>
+          {/* Conditional skip button - only for non-guest users with meal selected */}
+          {canSkipDrinks && (
+            <button
+              onClick={() => {
+                setSelectedDrink(null);
+                goToStep(5);
+              }}
+              className="w-full h-[44px] border border-dashed border-gray-300 text-brand-gray-neutral font-medium text-sm rounded-[8px] hover:bg-gray-50 transition"
+            >
+              Skip drink selection
+            </button>
+          )}
+          
+          {isDrinkMandatory && displayedDrinks.length > 0 && (
+            <div className="text-center">
+              <p className="text-xs text-brand-error-red mb-2">
+                {isGuestUser ? 'Drink selection is mandatory for guest transactions' : 'Drink selection is mandatory when no meal is selected'}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1355,9 +1664,16 @@ export const CashierFlow: React.FC = () => {
   // STEP 5: REVIEW AND SUBMIT
   // --------------------------------------------------------------------------
   if (cashierStep === 5) {
-    if (!selectedEmployee || !selectedSession || !selectedMenu) return null;
+    if (!selectedEmployee || !selectedSession) return null;
+    
+    // At least one of meal or drink must be selected
+    if (!selectedMenu && !selectedDrink) {
+      toast.error('Please select at least a meal or a drink');
+      goToStep(3);
+      return null;
+    }
 
-    const basePrice = selectedMenu.currentPrice || 0;
+    const basePrice = selectedMenu?.currentPrice || 0;
     const drinkPrice = selectedDrink?.currentPrice || 0;
     const totalPrice = basePrice + drinkPrice;
     const employeeShare = (totalPrice * subsidyRates.employee) / 100;
@@ -1370,7 +1686,15 @@ export const CashierFlow: React.FC = () => {
             <button
               onClick={() => {
                 setSelectedDrink(null);
-                goToStep(4);
+                
+                // If drink was available, go back to step 4
+                const { drinkAvailable } = getCurrentSessionAvailability();
+                if (drinkAvailable) {
+                  goToStep(4);
+                } else {
+                  // If drink wasn't available, go back to step 3
+                  goToStep(3);
+                }
               }}
               className="text-brand-gray-neutral hover:text-brand-dark-green"
             >
@@ -1389,6 +1713,9 @@ export const CashierFlow: React.FC = () => {
             <div>
               <h3 className="font-semibold text-sm text-brand-dark-green">{selectedEmployee.fullName}</h3>
               <p className="text-[11px] text-brand-gray-neutral font-mono">ID: {selectedEmployee.employeeNumber}</p>
+              {isGuest() && (
+                <span className="text-[10px] text-brand-gold font-medium">Guest</span>
+              )}
             </div>
           </div>
 
@@ -1397,15 +1724,26 @@ export const CashierFlow: React.FC = () => {
               <span className="text-brand-gray-neutral">Meal Session</span>
               <span className="font-semibold uppercase">{selectedSession}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-brand-gray-neutral">Selected Meal</span>
-              <span className="font-semibold">{selectedMenu.name}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-brand-gray-neutral">Meal Price</span>
-              <span className="font-semibold">{basePrice.toFixed(2)} ETB</span>
-            </div>
-            {selectedDrink && (
+            
+            {selectedMenu ? (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-brand-gray-neutral">Selected Meal</span>
+                  <span className="font-semibold">{selectedMenu.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-brand-gray-neutral">Meal Price</span>
+                  <span className="font-semibold">{basePrice.toFixed(2)} ETB</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-between">
+                <span className="text-brand-gray-neutral">Meal</span>
+                <span className="text-brand-gray-neutral italic">Skipped</span>
+              </div>
+            )}
+            
+            {selectedDrink ? (
               <>
                 <div className="flex justify-between">
                   <span className="text-brand-gray-neutral">Drink</span>
@@ -1416,7 +1754,13 @@ export const CashierFlow: React.FC = () => {
                   <span className="font-semibold">{drinkPrice.toFixed(2)} ETB</span>
                 </div>
               </>
+            ) : (
+              <div className="flex justify-between">
+                <span className="text-brand-gray-neutral">Drink</span>
+                <span className="text-brand-gray-neutral italic">Skipped</span>
+              </div>
             )}
+            
             <div className="h-[1px] bg-brand-light-green/20 my-1" />
 
             <div className="flex justify-between text-brand-gold">
@@ -1459,9 +1803,15 @@ export const CashierFlow: React.FC = () => {
   // STEP 6: SUCCESS RECEIPT
   // --------------------------------------------------------------------------
   if (cashierStep === 6) {
-    if (!selectedEmployee || !selectedSession || !selectedMenu) return null;
+    if (!selectedEmployee || !selectedSession) return null;
+    
+    // At least one should be selected
+    if (!selectedMenu && !selectedDrink) {
+      resetCashierFlow();
+      return null;
+    }
 
-    const basePrice = selectedMenu.currentPrice || 0;
+    const basePrice = selectedMenu?.currentPrice || 0;
     const drinkPrice = selectedDrink?.currentPrice || 0;
     const totalPrice = basePrice + drinkPrice;
     const employeeShare = (totalPrice * subsidyRates.employee) / 100;
@@ -1492,14 +1842,16 @@ export const CashierFlow: React.FC = () => {
             </div>
             <div className="flex justify-between">
               <span className="text-brand-gray-neutral">Meal</span>
-              <span className="text-brand-dark-green font-medium">{selectedMenu.name}</span>
+              <span className="text-brand-dark-green font-medium">
+                {selectedMenu ? selectedMenu.name : 'Skipped'}
+              </span>
             </div>
-            {selectedDrink && (
-              <div className="flex justify-between">
-                <span className="text-brand-gray-neutral">Drink</span>
-                <span className="text-brand-dark-green font-medium">{selectedDrink.name}</span>
-              </div>
-            )}
+            <div className="flex justify-between">
+              <span className="text-brand-gray-neutral">Drink</span>
+              <span className="text-brand-dark-green font-medium">
+                {selectedDrink ? selectedDrink.name : 'Skipped'}
+              </span>
+            </div>
             <div className="h-[1px] bg-brand-light-green/30 my-1" />
             <div className="flex justify-between text-base font-bold">
               <span className="text-brand-dark-green">Amount Charged</span>
