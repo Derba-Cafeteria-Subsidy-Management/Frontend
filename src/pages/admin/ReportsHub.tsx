@@ -8,9 +8,6 @@ import {
   Info,
   ChartBar,
   Users,
-  // Coffee,
-  // Sun,
-  // Moon,
   CurrencyDollar,
   WarningCircle,
   Download,
@@ -39,6 +36,7 @@ interface CompanyPaymentReport {
 
 type ReportType = 'payroll' | 'company' | 'invoice';
 type PeriodOption = 'today' | 'week' | 'month' | 'custom';
+type AudienceFilter = 'ALL' | 'EMPLOYEE' | 'GUEST';
 
 export const ReportsHub: React.FC = () => {
   const { currentUser, isOffline } = useApp();
@@ -57,6 +55,7 @@ export const ReportsHub: React.FC = () => {
   });
   const [employeeStatus, setEmployeeStatus] = useState<'All' | 'Active' | 'Inactive'>('All');
   const [period, setPeriod] = useState<PeriodOption>('month');
+  const [audienceFilter, setAudienceFilter] = useState<AudienceFilter>('ALL');
 
   // Local Transaction Data
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -78,13 +77,6 @@ export const ReportsHub: React.FC = () => {
     const role = currentUser.role?.toUpperCase() || '';
     return role === 'ADMIN' || role === 'SUPER_ADMIN';
   };
-
-  /**
-   * Format currency - kept for potential future use
-   */
-  // const _formatCurrency = (amount: number): string => {
-  //   return amount.toFixed(2) + ' ETB';
-  // };
 
   /**
    * Get period date range
@@ -186,7 +178,7 @@ export const ReportsHub: React.FC = () => {
   };
 
   /**
-   * Fetch local transaction data
+   * Fetch local transaction data with audience filter
    */
   const fetchLocalTransactions = async () => {
     setLoading(true);
@@ -196,28 +188,48 @@ export const ReportsHub: React.FC = () => {
       const end = new Date(endDate);
       end.setHours(23, 59, 59, 999);
 
-      const list = await db.transactions
+      // Get all transactions in date range
+      let list = await db.transactions
         .where('timestamp')
         .between(start, end, true, true)
         .toArray();
 
+      // Filter by employee status if needed
       if (employeeStatus !== 'All') {
         const filtered = [];
         for (const t of list) {
           const emp = await db.employees.get(t.employeeId);
-          // ✅ FIXED: Compare status correctly
           if (emp) {
-            // Convert emp.status (which is 'ACTIVE' | 'INACTIVE') to match employeeStatus
             const empStatus = emp.status === 'ACTIVE' ? 'Active' : 'Inactive';
             if (empStatus === employeeStatus) {
               filtered.push(t);
             }
           }
         }
-        setTransactions(filtered);
-      } else {
-        setTransactions(list);
+        list = filtered;
       }
+
+      // Filter by audience if not 'ALL'
+      if (audienceFilter !== 'ALL') {
+        const filtered = [];
+        for (const t of list) {
+          // Get the menu item to check its audience
+          const menuItem = await db.menuItems.get(t.menuItemId);
+          if (menuItem) {
+            // Use type assertion to access audience property
+            const itemAudience = (menuItem as any).audience || 'ALL';
+            if (itemAudience === audienceFilter || itemAudience === 'ALL') {
+              filtered.push(t);
+            }
+          } else {
+            // If menu item not found, include it (fallback)
+            filtered.push(t);
+          }
+        }
+        list = filtered;
+      }
+
+      setTransactions(list);
     } catch (e) {
       console.error(e);
       toast.error('Failed to query transactions for reports');
@@ -230,7 +242,7 @@ export const ReportsHub: React.FC = () => {
   useEffect(() => {
     fetchLocalTransactions();
     fetchApiReports();
-  }, [startDate, endDate, employeeStatus, period]);
+  }, [startDate, endDate, employeeStatus, period, audienceFilter]);
 
   // Handle invoice input edits
   const handleInvoiceChange = (dateKey: string, val: string) => {
@@ -252,20 +264,20 @@ export const ReportsHub: React.FC = () => {
       if (!map[t.employeeId]) {
         map[t.employeeId] = {
           id: t.employeeId,
-          name: t.employeeName,
+          name: t.employeeName || 'Unknown',
           department: '',
           count: 0,
           total: 0
         };
       }
       map[t.employeeId].count += 1;
-      map[t.employeeId].total += t.price;
+      map[t.employeeId].total += t.price || 0;
     });
 
     return Object.values(map).map(item => ({
       ...item,
-      empCost: item.total * 0.40,
-      compCost: item.total * 0.60
+      empCost: (item.total || 0) * 0.40,
+      compCost: (item.total || 0) * 0.60
     }));
   };
 
@@ -276,8 +288,8 @@ export const ReportsHub: React.FC = () => {
     const map: Record<string, { department: string; count: number; total: number }> = {};
 
     transactions.forEach(t => {
-      const dept = t.employeeId.includes('EMP') ? 'Engineering' : 'Finance';
-      const finalDept = dept;
+      const dept = t.employeeId?.includes('EMP') ? 'Engineering' : 'Finance';
+      const finalDept = dept || 'Unknown';
 
       if (!map[finalDept]) {
         map[finalDept] = {
@@ -287,12 +299,12 @@ export const ReportsHub: React.FC = () => {
         };
       }
       map[finalDept].count += 1;
-      map[finalDept].total += t.price;
+      map[finalDept].total += t.price || 0;
     });
 
     return Object.values(map).map(item => ({
       ...item,
-      compCost: item.total * 0.60
+      compCost: (item.total || 0) * 0.60
     }));
   };
 
@@ -313,28 +325,12 @@ export const ReportsHub: React.FC = () => {
         };
       }
       map[dateKey].count += 1;
-      map[dateKey].total += t.price;
-      map[dateKey].compCost += t.price * 0.60;
+      map[dateKey].total += t.price || 0;
+      map[dateKey].compCost += (t.price || 0) * 0.60;
     });
 
     return Object.values(map).sort((a, b) => b.date.localeCompare(a.date));
   };
-
-  /**
-   * Render session icon - kept for potential future use
-   */
-  // const _getSessionIcon = (session: string) => {
-  //   switch (session) {
-  //     case 'BREAKFAST':
-  //       return <Coffee size={16} className="text-brand-gold" />;
-  //     case 'LUNCH':
-  //       return <Sun size={16} className="text-brand-gold" />;
-  //     case 'DINNER':
-  //       return <Moon size={16} className="text-brand-gold" />;
-  //     default:
-  //       return <Coffee size={16} className="text-brand-gray-neutral" />;
-  //   }
-  // };
 
   // ================= REPORT EXPORTS =================
 
@@ -440,12 +436,12 @@ export const ReportsHub: React.FC = () => {
 
         data.forEach((row: any) => {
           sheet.addRow({
-            id: row.employeeId || row.id,
-            name: row.employeeName || row.name,
-            count: row.mealCount || row.count,
-            total: row.totalMealCost || row.total,
-            empCost: row.employeeShare || row.empCost,
-            compCost: row.companyShare || row.compCost || (row.total * 0.60)
+            id: row.employeeId || row.id || 'N/A',
+            name: row.employeeName || row.name || 'Unknown',
+            count: row.mealCount || row.count || 0,
+            total: row.totalMealCost || row.total || 0,
+            empCost: row.employeeShare || row.empCost || 0,
+            compCost: row.companyShare || row.compCost || (row.total || 0) * 0.60
           });
         });
       } else if (activeTab === 'company') {
@@ -461,9 +457,9 @@ export const ReportsHub: React.FC = () => {
         companyRows.forEach((row: any) => {
           sheet.addRow({
             department: row.department || 'All Departments',
-            count: row.total_menu_number || row.count || 0,
-            total: row.total_menu_price || row.total || 0,
-            compCost: row.total_company_share || row.compCost || 0
+            count: row.total_menu_number ?? row.count ?? 0,
+            total: row.total_menu_price ?? row.total ?? 0,
+            compCost: row.total_company_share ?? row.compCost ?? 0
           });
         });
       } else {
@@ -610,6 +606,10 @@ export const ReportsHub: React.FC = () => {
       const range = getPeriodRange();
       doc.setFontSize(10);
       doc.text(`Report Type: ${activeTab.toUpperCase()} | Date Range: ${range.from} to ${range.to}`, 15, 22);
+      
+      // Add audience filter info
+      const audienceLabel = audienceFilter === 'ALL' ? 'All' : audienceFilter === 'EMPLOYEE' ? 'Employees' : 'Guests';
+      doc.text(`Audience Filter: ${audienceLabel}`, 15, 28);
 
       doc.setTextColor(50, 100, 50);
       doc.setFontSize(14);
@@ -637,11 +637,11 @@ export const ReportsHub: React.FC = () => {
             doc.addPage();
             currentY = 20;
           }
-          doc.text(row.employeeId || row.id, 15, currentY);
-          doc.text(row.employeeName || row.name, 50, currentY);
-          doc.text(String(row.mealCount || row.count), 110, currentY);
-          doc.text((row.totalMealCost || row.total).toFixed(2), 140, currentY);
-          doc.text((row.employeeShare || row.empCost).toFixed(2), 175, currentY);
+          doc.text(row.employeeId || row.id || 'N/A', 15, currentY);
+          doc.text(row.employeeName || row.name || 'Unknown', 50, currentY);
+          doc.text(String(row.mealCount || row.count || 0), 110, currentY);
+          doc.text((row.totalMealCost || row.total || 0).toFixed(2), 140, currentY);
+          doc.text((row.employeeShare || row.empCost || 0).toFixed(2), 175, currentY);
           currentY += 8;
         });
       } else if (activeTab === 'company') {
@@ -663,9 +663,9 @@ export const ReportsHub: React.FC = () => {
             currentY = 20;
           }
           doc.text(row.department || 'All', 15, currentY);
-          doc.text(String(row.total_menu_number || row.count || 0), 70, currentY);
-          doc.text((row.total_menu_price || row.total || 0).toFixed(2), 110, currentY);
-          doc.text((row.total_company_share || row.compCost || 0).toFixed(2), 150, currentY);
+          doc.text(String(row.total_menu_number ?? row.count ?? 0), 70, currentY);
+          doc.text(((row.total_menu_price ?? row.total ?? 0)).toFixed(2), 110, currentY);
+          doc.text(((row.total_company_share ?? row.compCost ?? 0)).toFixed(2), 150, currentY);
           currentY += 8;
         });
       } else {
@@ -750,7 +750,7 @@ export const ReportsHub: React.FC = () => {
       </div>
 
       {/* Query Filters */}
-      <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] grid grid-cols-1 md:grid-cols-4 gap-4 select-none">
+      <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] grid grid-cols-1 md:grid-cols-5 gap-4 select-none">
         <div className="space-y-1.5">
           <label className="block text-[13px] font-medium text-brand-dark-green">Start Date</label>
           <input
@@ -795,6 +795,19 @@ export const ReportsHub: React.FC = () => {
             <option value="week">Last 7 Days</option>
             <option value="month">Last 30 Days</option>
             <option value="custom">Custom Range</option>
+          </select>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="block text-[13px] font-medium text-brand-dark-green">Menu Audience</label>
+          <select
+            value={audienceFilter}
+            onChange={(e) => setAudienceFilter(e.target.value as AudienceFilter)}
+            className="w-full h-[40px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-xs text-brand-dark-green bg-brand-white cursor-pointer"
+          >
+            <option value="ALL">All Menus</option>
+            <option value="EMPLOYEE">Employees Only</option>
+            <option value="GUEST">Guests Only</option>
           </select>
         </div>
       </div>
@@ -864,6 +877,7 @@ export const ReportsHub: React.FC = () => {
               const data = {
                 reportType: activeTab,
                 dateRange: range,
+                audienceFilter: audienceFilter,
                 transactions: transactions.length,
                 generatedAt: new Date().toISOString(),
                 payrollData: activeTab === 'payroll' ? payrollData : undefined,
@@ -912,22 +926,22 @@ export const ReportsHub: React.FC = () => {
                       {(payrollData.length > 0 ? payrollData : getLocalPayrollData()).map((row: any) => (
                         <tr key={row.employeeId || row.id} className="hover:bg-brand-light-green/5 transition-colors">
                           <td className="p-4 font-mono text-[13px] text-brand-dark-green">
-                            {row.employeeId || row.id}
+                            {row.employeeId || row.id || 'N/A'}
                           </td>
                           <td className="p-4 font-medium text-brand-dark-green">
-                            {row.employeeName || row.name}
+                            {row.employeeName || row.name || 'Unknown'}
                           </td>
                           <td className="p-4 text-center text-brand-dark-green font-semibold">
-                            {row.mealCount || row.count}
+                            {row.mealCount || row.count || 0}
                           </td>
                           <td className="p-4 text-right text-brand-dark-green font-mono">
-                            {(row.totalMealCost || row.total).toFixed(2)} ETB
+                            {(row.totalMealCost || row.total || 0).toFixed(2)} ETB
                           </td>
                           <td className="p-4 text-right text-brand-dark-green font-bold font-mono">
-                            {(row.employeeShare || row.empCost).toFixed(2)} ETB
+                            {(row.employeeShare || row.empCost || 0).toFixed(2)} ETB
                           </td>
                           <td className="p-4 text-right text-brand-dark-green font-bold font-mono">
-                            {(row.totalMealCost - row.employeeShare || row.compCost || (row.totalMealCost * 0.60)).toFixed(2)} ETB
+                            {(row.companyShare || row.compCost || (row.totalMealCost || row.total || 0) * 0.60).toFixed(2)} ETB
                           </td>
                         </tr>
                       ))}
@@ -960,13 +974,13 @@ export const ReportsHub: React.FC = () => {
                         <tr className="hover:bg-brand-light-green/5 transition-colors">
                           <td className="p-4 font-semibold text-brand-dark-green">All Departments</td>
                           <td className="p-4 text-center text-brand-dark-green font-semibold">
-                            {companyPayment.total_menu_number}
+                            {companyPayment.total_menu_number ?? 0}
                           </td>
                           <td className="p-4 text-right text-brand-dark-green font-mono">
-                            {companyPayment.total_menu_price.toFixed(2)} ETB
+                            {(companyPayment.total_menu_price ?? 0).toFixed(2)} ETB
                           </td>
                           <td className="p-4 text-right text-brand-dark-green font-bold font-mono">
-                            {companyPayment.total_company_share.toFixed(2)} ETB
+                            {(companyPayment.total_company_share ?? 0).toFixed(2)} ETB
                           </td>
                         </tr>
                       ) : getLocalCompanyData().map((row, idx) => (
@@ -1059,3 +1073,5 @@ export const ReportsHub: React.FC = () => {
     </div>
   );
 };
+
+export default ReportsHub;
