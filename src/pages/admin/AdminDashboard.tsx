@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axiosInstance from '../../client/axios';
-import { useLanguage } from '../../context/LanguageContext';
 import {
   Users,
   ForkKnife,
@@ -43,7 +42,6 @@ ChartJS.register(
 
 export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { t } = useLanguage();
 
   // Dashboard stats state (these don't change with tabs)
   const [todayMealsCount, setTodayMealsCount] = useState(0);
@@ -340,7 +338,7 @@ export const AdminDashboard: React.FC = () => {
       console.warn('Could not update system settings:', error);
     }
 
-    toast.success(newVal ? t('Manual ID Lookup enabled on cashier terminal') : t('Manual ID Lookup disabled on cashier terminal'));
+    toast.success(newVal ? 'Manual ID Lookup enabled on cashier terminal' : 'Manual ID Lookup disabled on cashier terminal');
   };
 
   const handleYearChange = (year: number) => {
@@ -390,7 +388,7 @@ export const AdminDashboard: React.FC = () => {
           `rgba(46, 125, 50, 1)`,
           `rgba(212, 175, 55, 0.8)`
         ],
-        label: t('Transactions'),
+        label: 'Transactions',
         data: analyticsData.transactions,
         format: (value: number) => value.toString()
       },
@@ -405,7 +403,7 @@ export const AdminDashboard: React.FC = () => {
           `rgba(46, 125, 50, 0.8)`,
           `rgba(46, 125, 50, 0.6)`
         ],
-        label: t('Company Revenue'),
+        label: 'Company Revenue',
         data: analyticsData.companyRevenue,
         format: (value: number) => formatCurrency(value)
       },
@@ -420,7 +418,7 @@ export const AdminDashboard: React.FC = () => {
           `rgba(212, 175, 55, 0.8)`,
           `rgba(212, 175, 55, 0.6)`
         ],
-        label: t('Total Cost'),
+        label: 'Total Cost',
         data: analyticsData.employeeCost,
         format: (value: number) => formatCurrency(value)
       }
@@ -525,10 +523,10 @@ export const AdminDashboard: React.FC = () => {
       <div className="space-y-8">
         <div>
           <h1 className="text-[28px] font-semibold text-brand-dark-green font-sans leading-none">
-            {t('Dashboard')}
+            Dashboard
           </h1>
           <p className="text-brand-gray-neutral text-sm mt-2">
-            {t('Overview of cafeteria activities, system metrics, and quick actions')}
+            Overview of cafeteria activities, system metrics, and quick actions
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -554,10 +552,10 @@ export const AdminDashboard: React.FC = () => {
       {/* Header */}
       <div>
         <h1 className="text-[28px] font-semibold text-brand-dark-green font-sans leading-none">
-          {t('Dashboard')}
+          Dashboard
         </h1>
         <p className="text-brand-gray-neutral text-sm mt-2">
-          {t('Overview of cafeteria activities, system metrics, and quick actions')}
+          Overview of cafeteria activities, system metrics, and quick actions
         </p>
       </div>
 
@@ -566,33 +564,33 @@ export const AdminDashboard: React.FC = () => {
         <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] border-t-4 border-t-brand-light-green rounded-[12px] p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between min-h-[140px]">
           <div>
             <span className="text-[13px] font-medium text-brand-gray-neutral uppercase tracking-wider block">
-              {t("Today's Meals")}
+              Today's Meals
             </span>
             <span className="text-brand-dark-green text-[36px] font-bold block mt-2 font-mono leading-none">
               {todayMealsCount}
             </span>
           </div>
           <div className="text-xs text-brand-gray-neutral pt-2 select-none">
-            {t('Registered meals today')}
+            Registered meals today
           </div>
         </div>
 
         <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] border-t-4 border-t-brand-gold rounded-[12px] p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between min-h-[140px]">
           <div>
             <span className="text-[13px] font-medium text-brand-gray-neutral uppercase tracking-wider block">
-              {t('Pending Corrections')}
+              Pending Corrections
             </span>
             <span className="text-brand-gold text-[36px] font-bold block mt-2 font-mono leading-none">
               {pendingCorrectionsCount}
             </span>
           </div>
           <div className="flex items-center justify-between pt-2">
-            <span className="text-xs text-brand-gray-neutral select-none">{t('Awaiting adjudication')}</span>
+            <span className="text-xs text-brand-gray-neutral select-none">Awaiting adjudication</span>
             <Link
               to="/admin/corrections"
               className="text-brand-gold text-xs font-semibold hover:underline"
             >
-              {t('Review →')}
+              Review →
             </Link>
           </div>
         </div>
@@ -600,14 +598,14 @@ export const AdminDashboard: React.FC = () => {
         <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] border-t-4 border-t-brand-light-green rounded-[12px] p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between min-h-[140px]">
           <div>
             <span className="text-[13px] font-medium text-brand-gray-neutral uppercase tracking-wider block">
-              {t('Active Menu Items')}
+              Active Menu Items
             </span>
             <span className="text-brand-dark-green text-[36px] font-bold block mt-2 font-mono leading-none">
               {activeMenuItemsCount}
             </span>
           </div>
           <div className="text-xs text-brand-gray-neutral pt-2 select-none">
-            {t('Items currently active on menus')}
+            Items currently active on menus
           </div>
         </div>
       </div>
@@ -618,7 +616,7 @@ export const AdminDashboard: React.FC = () => {
           <div className="flex items-center gap-3">
             <ChartBar size={24} className="text-brand-dark-green flex-shrink-0" />
             <h3 className="text-brand-dark-green font-semibold text-lg select-none">
-              {t('Analytics Dashboard')}
+              Analytics Dashboard
             </h3>
           </div>
 
@@ -632,7 +630,7 @@ export const AdminDashboard: React.FC = () => {
                     : 'bg-brand-white text-brand-gray-neutral hover:bg-brand-light-green/10'
                   }`}
               >
-                {t('Daily')}
+                Daily
               </button>
               <button
                 onClick={() => handleViewModeChange('weekly')}
@@ -641,7 +639,7 @@ export const AdminDashboard: React.FC = () => {
                     : 'bg-brand-white text-brand-gray-neutral hover:bg-brand-light-green/10'
                   }`}
               >
-                {t('Weekly')}
+                Weekly
               </button>
               <button
                 onClick={() => handleViewModeChange('monthly')}
@@ -650,7 +648,7 @@ export const AdminDashboard: React.FC = () => {
                     : 'bg-brand-white text-brand-gray-neutral hover:bg-brand-light-green/10'
                   }`}
               >
-                {t('Monthly')}
+                Monthly
               </button>
               <button
                 onClick={() => handleViewModeChange('yearly')}
@@ -659,7 +657,7 @@ export const AdminDashboard: React.FC = () => {
                     : 'bg-brand-white text-brand-gray-neutral hover:bg-brand-light-green/10'
                   }`}
               >
-                {t('Yearly')}
+                Yearly
               </button>
             </div>
           </div>
@@ -682,7 +680,7 @@ export const AdminDashboard: React.FC = () => {
 
           {(viewMode === 'monthly' || viewMode === 'yearly') && (
             <div className="flex items-center gap-2">
-              <label className="text-sm text-brand-gray-neutral whitespace-nowrap font-medium">{t('Year:')}</label>
+              <label className="text-sm text-brand-gray-neutral whitespace-nowrap font-medium">Year:</label>
               <select
                 value={selectedYear}
                 onChange={(e) => handleYearChange(parseInt(e.target.value))}
@@ -697,7 +695,7 @@ export const AdminDashboard: React.FC = () => {
 
           {viewMode === 'monthly' && (
             <div className="flex items-center gap-2">
-              <label className="text-sm text-brand-gray-neutral whitespace-nowrap font-medium">{t('Month:')}</label>
+              <label className="text-sm text-brand-gray-neutral whitespace-nowrap font-medium">Month:</label>
               <select
                 value={selectedMonth}
                 onChange={(e) => handleMonthChange(parseInt(e.target.value))}
@@ -721,7 +719,7 @@ export const AdminDashboard: React.FC = () => {
               }`}
           >
             <Coffee size={18} />
-            {t('Transactions')}
+            Transactions
           </button>
           <button
             onClick={() => setChartType('revenue')}
@@ -731,7 +729,7 @@ export const AdminDashboard: React.FC = () => {
               }`}
           >
             <CurrencyDollar size={18} />
-            {t('Company Revenue')}
+            Company Revenue
           </button>
           <button
             onClick={() => setChartType('cost')}
@@ -741,7 +739,7 @@ export const AdminDashboard: React.FC = () => {
               }`}
           >
             <Receipt size={18} />
-            {t('Total Cost')}
+            Total Cost
           </button>
         </div>
 

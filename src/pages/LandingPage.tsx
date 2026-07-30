@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { useLanguage } from '../context/LanguageContext';
-import { LanguageToggle } from '../components/Layouts';
 import {
   Fingerprint,
   Clock,
@@ -27,7 +25,6 @@ import toast from 'react-hot-toast';
 
 export const LandingPage: React.FC = () => {
   const { currentUser } = useApp();
-  const { t } = useLanguage();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
 
@@ -129,7 +126,7 @@ export const LandingPage: React.FC = () => {
           ...prev.slice(0, 4)
         ]);
 
-        toast.success(t('Meal registered successfully! Duplicate check passed.'));
+        toast.success('Meal registered successfully! Duplicate check passed.');
 
         setTimeout(() => {
           setSimStatus('idle');
@@ -140,9 +137,9 @@ export const LandingPage: React.FC = () => {
   };
 
   const handleDownloadReport = (reportName: string) => {
-    toast.success(t(`Preparing draft of ${reportName}...`));
+    toast.success(`Preparing draft of ${reportName}...`);
     setTimeout(() => {
-      toast.success(t(`${reportName} downloaded successfully! (Sample PDF/Excel)`));
+      toast.success(`${reportName} downloaded successfully! (Sample PDF/Excel)`);
     }, 1500);
   };
 
@@ -181,33 +178,32 @@ export const LandingPage: React.FC = () => {
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
             <img src={logo} alt="Derba MIDROC Logo" className="h-10 w-10 object-contain" />
             <div>
-              <span className="font-bold text-lg text-[#1A5C3A] tracking-tight block leading-tight">{t('CSMS')}</span>
-              <span className="text-[10px] text-gray-500 font-medium block -mt-0.5 tracking-wider uppercase">{t('Derba MIDROC Cement')}</span>
+              <span className="font-bold text-lg text-[#1A5C3A] tracking-tight block leading-tight">CSMS</span>
+              <span className="text-[10px] text-gray-500 font-medium block -mt-0.5 tracking-wider uppercase">Derba MIDROC Cement</span>
             </div>
           </div>
 
           {/* Desktop Nav */}
           <nav className="hidden lg:flex items-center gap-8">
-            <button onClick={() => handleNavClick('features')} className="text-sm font-medium text-gray-600 hover:text-[#1A5C3A] transition-colors cursor-pointer">{t('Features')}</button>
-            <button onClick={() => handleNavClick('how-it-works')} className="text-sm font-medium text-gray-600 hover:text-[#1A5C3A] transition-colors cursor-pointer">{t('How It Works')}</button>
-            <button onClick={() => handleNavClick('reports')} className="text-sm font-medium text-gray-600 hover:text-[#1A5C3A] transition-colors cursor-pointer">{t('Reports')}</button>
-            <button onClick={() => handleNavClick('roles')} className="text-sm font-medium text-gray-600 hover:text-[#1A5C3A] transition-colors cursor-pointer">{t('User Roles')}</button>
+            <button onClick={() => handleNavClick('features')} className="text-sm font-medium text-gray-600 hover:text-[#1A5C3A] transition-colors cursor-pointer">Features</button>
+            <button onClick={() => handleNavClick('how-it-works')} className="text-sm font-medium text-gray-600 hover:text-[#1A5C3A] transition-colors cursor-pointer">How It Works</button>
+            <button onClick={() => handleNavClick('reports')} className="text-sm font-medium text-gray-600 hover:text-[#1A5C3A] transition-colors cursor-pointer">Reports</button>
+            <button onClick={() => handleNavClick('roles')} className="text-sm font-medium text-gray-600 hover:text-[#1A5C3A] transition-colors cursor-pointer">User Roles</button>
           </nav>
 
           <div className="hidden lg:flex items-center gap-4">
-            <LanguageToggle />
             {currentUser ? (
               <Link
                 to={getDashboardRedirectUrl()}
                 className="bg-[#1A5C3A] hover:bg-[#15462c] text-white px-5 py-2 rounded-[8px] text-sm font-semibold transition-all duration-200 flex items-center gap-1.5 shadow-[0_4px_12px_rgba(26,92,58,0.15)] hover:shadow-[0_4px_18px_rgba(26,92,58,0.25)] hover:-translate-y-0.5"
               >
-                {t('Go to Dashboard')}
+                Go to Dashboard
                 <ArrowRight size={16} weight="bold" />
               </Link>
             ) : (
               <>
                 <Link to="/login" className="text-[#1A5C3A] hover:text-[#15462c] text-sm font-semibold transition-colors">
-                  {t('Sign In')}
+                  Sign In
                 </Link>
               </>
             )}
@@ -222,14 +218,13 @@ export const LandingPage: React.FC = () => {
         {/* Mobile Menu Panel */}
         {mobileMenuOpen && (
           <div className="lg:hidden absolute top-full left-0 right-0 bg-white border-b border-gray-200 shadow-xl py-6 px-6 flex flex-col gap-4 animate-fade-in">
-            <button onClick={() => handleNavClick('features')} className="text-left py-2 font-medium text-gray-700 hover:text-[#1A5C3A] transition-colors">{t('Features')}</button>
-            <button onClick={() => handleNavClick('how-it-works')} className="text-left py-2 font-medium text-gray-700 hover:text-[#1A5C3A] transition-colors">{t('How It Works')}</button>
-            <button onClick={() => handleNavClick('reports')} className="text-left py-2 font-medium text-gray-700 hover:text-[#1A5C3A] transition-colors">{t('Reports')}</button>
-            <button onClick={() => handleNavClick('roles')} className="text-left py-2 font-medium text-gray-700 hover:text-[#1A5C3A] transition-colors">{t('User Roles')}</button>
+            <button onClick={() => handleNavClick('features')} className="text-left py-2 font-medium text-gray-700 hover:text-[#1A5C3A] transition-colors">Features</button>
+            <button onClick={() => handleNavClick('how-it-works')} className="text-left py-2 font-medium text-gray-700 hover:text-[#1A5C3A] transition-colors">How It Works</button>
+            <button onClick={() => handleNavClick('reports')} className="text-left py-2 font-medium text-gray-700 hover:text-[#1A5C3A] transition-colors">Reports</button>
+            <button onClick={() => handleNavClick('roles')} className="text-left py-2 font-medium text-gray-700 hover:text-[#1A5C3A] transition-colors">User Roles</button>
             
             <div className="flex justify-between items-center py-1">
-              <span className="text-sm font-medium text-gray-500">{t('Language')}</span>
-              <LanguageToggle />
+              <span className="text-sm font-medium text-gray-500">Language</span>
             </div>
 
             <hr className="border-gray-100 my-2" />
@@ -239,7 +234,7 @@ export const LandingPage: React.FC = () => {
                 onClick={() => setMobileMenuOpen(false)}
                 className="bg-[#1A5C3A] text-white text-center py-3 rounded-[8px] font-semibold transition-colors flex items-center justify-center gap-2"
               >
-                {t('Go to Dashboard')}
+                Go to Dashboard
                 <ArrowRight size={16} weight="bold" />
               </Link>
             ) : (
@@ -249,7 +244,7 @@ export const LandingPage: React.FC = () => {
                   onClick={() => setMobileMenuOpen(false)}
                   className="border border-[#1A5C3A] text-[#1A5C3A] text-center py-2.5 rounded-[8px] font-semibold hover:bg-gray-50 transition-colors"
                 >
-                  {t('Sign In')}
+                  Sign In
                 </Link>
               </div>
             )}
@@ -268,20 +263,20 @@ export const LandingPage: React.FC = () => {
           <div className="lg:col-span-6 space-y-6 text-center lg:text-left">
             <div className="inline-flex items-center gap-2 bg-[#E2F0E7] border border-[#C5E2CF] px-3.5 py-1.5 rounded-full text-xs font-semibold text-[#1A5C3A]">
               <span className="w-2 h-2 rounded-full bg-[#F5A623] animate-pulse" />
-              {t('Designed for Derba MIDROC Cement')}
+              Designed for Derba MIDROC Cement
             </div>
             <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 tracking-tight leading-[1.1] font-sans">
-              {t('Streamline Cafeteria Subsidy Management with')} <span className="text-[#1A5C3A] bg-clip-text">{t('Smart Verification')}</span>
+              Streamline Cafeteria Subsidy Management with <span className="text-[#1A5C3A] bg-clip-text">Smart Verification</span>
             </h1>
             <p className="text-base md:text-lg text-gray-600 max-w-xl mx-auto lg:mx-0 leading-relaxed">
-              {t('Eliminate duplicate claims, automate payroll deductions, and verify vendor invoices in real-time with our secure, biometric-enabled enterprise system.')}
+              Eliminate duplicate claims, automate payroll deductions, and verify vendor invoices in real-time with our secure, biometric-enabled enterprise system.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
               <button
                 onClick={() => handleNavClick('features')}
                 className="w-full sm:w-auto border-2 border-gray-300 hover:border-[#1A5C3A] hover:text-[#1A5C3A] text-gray-700 px-8 py-3.5 rounded-[8px] font-semibold transition-all duration-200 flex items-center justify-center cursor-pointer"
               >
-                {t('View Features')}
+                View Features
               </button>
             </div>
 
@@ -289,11 +284,11 @@ export const LandingPage: React.FC = () => {
             <div className="pt-6 grid grid-cols-2 gap-4 max-w-sm mx-auto lg:mx-0">
               <div className="flex items-center gap-2">
                 <CheckCircle className="text-[#1A5C3A] flex-shrink-0" size={18} weight="fill" />
-                <span className="text-xs text-gray-600 font-medium">{t('99.9% Uptime Verified')}</span>
+                <span className="text-xs text-gray-600 font-medium">99.9% Uptime Verified</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle className="text-[#1A5C3A] flex-shrink-0" size={18} weight="fill" />
-                <span className="text-xs text-gray-600 font-medium">{t('Role-Based Auditing')}</span>
+                <span className="text-xs text-gray-600 font-medium">Role-Based Auditing</span>
               </div>
             </div>
           </div>
@@ -307,11 +302,11 @@ export const LandingPage: React.FC = () => {
                   <div className="w-3 h-3 rounded-full bg-red-400" />
                   <div className="w-3 h-3 rounded-full bg-yellow-400" />
                   <div className="w-3 h-3 rounded-full bg-green-400" />
-                  <span className="text-[11px] text-gray-400 font-medium font-mono ml-2">{t('TERMINAL-MOCKUP // ONLINE')}</span>
+                  <span className="text-[11px] text-gray-400 font-medium font-mono ml-2">TERMINAL-MOCKUP // ONLINE</span>
                 </div>
                 <div className="flex items-center gap-1.5 bg-[#E2F0E7] text-[#1A5C3A] text-[10px] font-bold px-2 py-0.5 rounded">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                  {t('SYSTEM ACTIVE')}
+                  SYSTEM ACTIVE
                 </div>
               </div>
 
@@ -321,7 +316,7 @@ export const LandingPage: React.FC = () => {
                 {/* Left Mini Panel: Biometric Verification */}
                 <div className="md:col-span-5 border border-gray-200/80 rounded-lg p-4 bg-[#F8F9FA] flex flex-col justify-between items-center text-center">
                   <div className="w-full">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-3">{t('BIOMETRIC SCANNER')}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-3">BIOMETRIC SCANNER</span>
 
                     {/* Scanner Circular Indicator */}
                     <div className="relative w-28 h-28 mx-auto bg-white rounded-full border border-gray-100 flex items-center justify-center overflow-hidden shadow-inner group cursor-pointer" onClick={triggerScannerSimulation}>
@@ -354,23 +349,23 @@ export const LandingPage: React.FC = () => {
                         className="bg-[#1A5C3A] hover:bg-[#15462c] text-white text-xs font-semibold px-4 py-2 rounded shadow-sm w-full transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <Fingerprint size={14} />
-                        {t('Simulate Scan')}
+                        Simulate Scan
                       </button>
                     )}
                     {simStatus === 'scanning' && (
                       <div className="text-xs text-cyan-600 font-semibold animate-pulse py-2">
-                        {t('Scanning Fingerprint...')}
+                        Scanning Fingerprint...
                       </div>
                     )}
                     {simStatus === 'verified' && (
                       <div className="text-xs text-[#F5A623] font-semibold py-2">
-                        {t('Verifying Eligibility...')}
+                        Verifying Eligibility...
                       </div>
                     )}
                     {simStatus === 'success' && (
                       <div className="bg-[#E2F0E7] text-[#1A5C3A] rounded py-1.5 px-2 text-xs font-bold flex items-center justify-center gap-1">
                         <Check size={14} weight="bold" />
-                        {t('ACCESS GRANTED')}
+                        ACCESS GRANTED
                       </div>
                     )}
                   </div>
@@ -387,14 +382,14 @@ export const LandingPage: React.FC = () => {
                           {simEmployee.photo}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-xs font-bold text-gray-800 truncate">{t(simEmployee.name)}</h4>
-                          <p className="text-[10px] text-gray-500">{t('ID')}: {simEmployee.id} | {t('Dept')}: {t(simEmployee.dept)}</p>
+                          <h4 className="text-xs font-bold text-gray-800 truncate">{simEmployee.name}</h4>
+                          <p className="text-[10px] text-gray-500">ID: {simEmployee.id} | Dept: {simEmployee.dept}</p>
                           <div className="mt-2 flex gap-1.5">
                             <span className="bg-[#E2F0E7] text-[#1A5C3A] text-[9px] px-1.5 py-0.5 rounded font-bold">
-                              {t(simEmployee.status)}
+                              {simEmployee.status}
                             </span>
                             <span className="bg-[#EBF3FC] text-[#2B6CB0] text-[9px] px-1.5 py-0.5 rounded font-bold">
-                              {t('Lunch Session')}
+                              Lunch Session
                             </span>
                           </div>
                         </div>
@@ -402,7 +397,7 @@ export const LandingPage: React.FC = () => {
                     ) : (
                       <div className="text-center text-gray-400 py-6">
                         <User size={32} className="mx-auto opacity-30 mb-1" />
-                        <span className="text-[11px] font-medium block">{t('Scan employee fingerprint to verify benefits eligibility')}</span>
+                        <span className="text-[11px] font-medium block">Scan employee fingerprint to verify benefits eligibility</span>
                       </div>
                     )}
                   </div>
@@ -410,26 +405,26 @@ export const LandingPage: React.FC = () => {
                   {/* Live Transaction Log Mockup */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">{t('Live Terminal Logs')}</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Live Terminal Logs</span>
                       <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                     </div>
                     <div className="border border-gray-100 rounded-lg overflow-hidden bg-white">
                       <table className="w-full text-left text-[11px]">
                         <thead>
                           <tr className="bg-gray-50 text-gray-500 font-semibold border-b border-gray-100">
-                            <th className="py-2 px-3">{t('Time')}</th>
-                            <th className="py-2 px-3">{t('Employee')}</th>
-                            <th className="py-2 px-3">{t('Status')}</th>
+                            <th className="py-2 px-3">Time</th>
+                            <th className="py-2 px-3">Employee</th>
+                            <th className="py-2 px-3">Status</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                           {simLog.map((log, idx) => (
                             <tr key={idx} className={idx === 0 && simStatus === 'success' ? 'bg-[#E2F0E7]/40 font-medium' : ''}>
                               <td className="py-2 px-3 text-gray-400 font-mono">{log.time}</td>
-                              <td className="py-2 px-3 text-gray-700 truncate max-w-[100px]">{t(log.name)}</td>
+                              <td className="py-2 px-3 text-gray-700 truncate max-w-[100px]">{log.name}</td>
                               <td className="py-2 px-3">
                                 <span className="text-[#1A5C3A] bg-[#E2F0E7] px-1.5 py-0.5 rounded-[4px] font-bold text-[9px]">
-                                  {t(log.status)}
+                                  {log.status}
                                 </span>
                               </td>
                             </tr>
@@ -454,10 +449,10 @@ export const LandingPage: React.FC = () => {
           </div>
           <div>
             <p className="text-sm font-semibold text-gray-800">
-              {t('Designed for Derba MIDROC Cement')}
+              Designed for Derba MIDROC Cement
             </p>
             <p className="text-xs text-gray-500 mt-0.5">
-              {t('Managing employee cafeteria subsidies efficiently with biometric verification, double-registration preventions, and automated billing.')}
+              Managing employee cafeteria subsidies efficiently with biometric verification, double-registration preventions, and automated billing.
             </p>
           </div>
         </div>
@@ -467,12 +462,12 @@ export const LandingPage: React.FC = () => {
       <section id="features" className="py-20 bg-gray-50">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center max-w-2xl mx-auto mb-16 space-y-3">
-            <h2 className="text-[11px] font-bold tracking-widest text-[#1A5C3A] uppercase">{t('Enterprise Capabilities')}</h2>
+            <h2 className="text-[11px] font-bold tracking-widest text-[#1A5C3A] uppercase">Enterprise Capabilities</h2>
             <h3 className="text-3xl font-bold text-gray-900 tracking-tight">
-              {t('Powerful Features for Seamless Subsidy Control')}
+              Powerful Features for Seamless Subsidy Control
             </h3>
             <p className="text-gray-600 text-sm leading-relaxed">
-              {t('Designed from the ground up to prevent leakages, improve security, and simplify reporting for modern enterprise cafeterias.')}
+              Designed from the ground up to prevent leakages, improve security, and simplify reporting for modern enterprise cafeterias.
             </p>
           </div>
 
@@ -484,13 +479,13 @@ export const LandingPage: React.FC = () => {
                 <div className="w-12 h-12 rounded-lg bg-[#E2F0E7] text-[#1A5C3A] flex items-center justify-center mb-6">
                   <Fingerprint size={28} />
                 </div>
-                <h4 className="text-lg font-bold text-gray-900 mb-2">{t('Fingerprint Verification')}</h4>
+                <h4 className="text-lg font-bold text-gray-900 mb-2">Fingerprint Verification</h4>
                 <p className="text-gray-600 text-sm leading-relaxed">
-                  {t('Secure biometric authentication at the point of service ensures transaction authenticity and completely eliminates proxy meal claims.')}
+                  Secure biometric authentication at the point of service ensures transaction authenticity and completely eliminates proxy meal claims.
                 </p>
               </div>
               <div className="mt-6 pt-4 border-t border-gray-100 flex items-center text-xs font-semibold text-[#1A5C3A] hover:text-[#15462c]">
-                {t('Prevents identity fraud')}
+                Prevents identity fraud
               </div>
             </div>
 
@@ -500,13 +495,13 @@ export const LandingPage: React.FC = () => {
                 <div className="w-12 h-12 rounded-lg bg-[#FFF2DE] text-[#F5A623] flex items-center justify-center mb-6">
                   <WarningCircle size={28} />
                 </div>
-                <h4 className="text-lg font-bold text-gray-900 mb-2">{t('Smart Duplicate Prevention')}</h4>
+                <h4 className="text-lg font-bold text-gray-900 mb-2">Smart Duplicate Prevention</h4>
                 <p className="text-gray-600 text-sm leading-relaxed">
-                  {t('Advanced validation engine automatically blocks multiple meal registrations for the same session, enforcing single-benefit policy rules.')}
+                  Advanced validation engine automatically blocks multiple meal registrations for the same session, enforcing single-benefit policy rules.
                 </p>
               </div>
               <div className="mt-6 pt-4 border-t border-gray-100 flex items-center text-xs font-semibold text-[#F5A623]">
-                {t('Protects company subsidy budget')}
+                Protects company subsidy budget
               </div>
             </div>
 
@@ -516,13 +511,13 @@ export const LandingPage: React.FC = () => {
                 <div className="w-12 h-12 rounded-lg bg-[#EBF3FC] text-[#2B6CB0] flex items-center justify-center mb-6">
                   <Clock size={28} />
                 </div>
-                <h4 className="text-lg font-bold text-gray-900 mb-2">{t('Real-Time Transaction Logging')}</h4>
+                <h4 className="text-lg font-bold text-gray-900 mb-2">Real-Time Transaction Logging</h4>
                 <p className="text-gray-600 text-sm leading-relaxed">
-                  {t('Every meal is permanently logged in a cloud-synced database with a comprehensive audit trail, providing complete transaction visibility.')}
+                  Every meal is permanently logged in a cloud-synced database with a comprehensive audit trail, providing complete transaction visibility.
                 </p>
               </div>
               <div className="mt-6 pt-4 border-t border-gray-100 flex items-center text-xs font-semibold text-[#2B6CB0]">
-                {t('Immediate auditable history')}
+                Immediate auditable history
               </div>
             </div>
 
@@ -532,13 +527,13 @@ export const LandingPage: React.FC = () => {
                 <div className="w-12 h-12 rounded-lg bg-[#E2F0E7] text-[#1A5C3A] flex items-center justify-center mb-6">
                   <ForkKnife size={28} />
                 </div>
-                <h4 className="text-lg font-bold text-gray-900 mb-2">{t('Menu & Price Management')}</h4>
+                <h4 className="text-lg font-bold text-gray-900 mb-2">Menu & Price Management</h4>
                 <p className="text-gray-600 text-sm leading-relaxed">
-                  {t('Flexible administration allows dynamic menu definition, custom subsidy allocations, and historical price tracking for all items.')}
+                  Flexible administration allows dynamic menu definition, custom subsidy allocations, and historical price tracking for all items.
                 </p>
               </div>
               <div className="mt-6 pt-4 border-t border-gray-100 flex items-center text-xs font-semibold text-[#1A5C3A]">
-                {t('Adaptable menu sessions')}
+                Adaptable menu sessions
               </div>
             </div>
 
@@ -548,13 +543,13 @@ export const LandingPage: React.FC = () => {
                 <div className="w-12 h-12 rounded-lg bg-[#FFF2DE] text-[#F5A623] flex items-center justify-center mb-6">
                   <CheckCircle size={28} />
                 </div>
-                <h4 className="text-lg font-bold text-gray-900 mb-2">{t('Correction Workflow')}</h4>
+                <h4 className="text-lg font-bold text-gray-900 mb-2">Correction Workflow</h4>
                 <p className="text-gray-600 text-sm leading-relaxed">
-                  {t('Secure correction adjudication process allows cashiers to flag transactions, subject to strict Administrator verification and approval.')}
+                  Secure correction adjudication process allows cashiers to flag transactions, subject to strict Administrator verification and approval.
                 </p>
               </div>
               <div className="mt-6 pt-4 border-t border-gray-100 flex items-center text-xs font-semibold text-[#F5A623]">
-                {t('Reduces discrepancies securely')}
+                Reduces discrepancies securely
               </div>
             </div>
 
@@ -564,13 +559,13 @@ export const LandingPage: React.FC = () => {
                 <div className="w-12 h-12 rounded-lg bg-[#EBF3FC] text-[#2B6CB0] flex items-center justify-center mb-6">
                   <WifiHigh size={28} />
                 </div>
-                <h4 className="text-lg font-bold text-gray-900 mb-2">{t('Offline Operations Mode')}</h4>
+                <h4 className="text-lg font-bold text-gray-900 mb-2">Offline Operations Mode</h4>
                 <p className="text-gray-600 text-sm leading-relaxed">
-                  {t('Local database backup enables the system to register transactions even during network failures, automatically syncing logs when online.')}
+                  Local database backup enables the system to register transactions even during network failures, automatically syncing logs when online.
                 </p>
               </div>
               <div className="mt-6 pt-4 border-t border-gray-100 flex items-center text-xs font-semibold text-[#2B6CB0]">
-                {t('Zero interruption in service')}
+                Zero interruption in service
               </div>
             </div>
 
@@ -578,7 +573,7 @@ export const LandingPage: React.FC = () => {
 
           <div className="text-center mt-12">
             <button onClick={() => handleNavClick('contact')} className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#1A5C3A] hover:text-[#15462c] hover:underline cursor-pointer">
-              {t('Explore All Features in a Demo')}
+              Explore All Features in a Demo
               <ArrowRight size={16} />
             </button>
           </div>
@@ -589,12 +584,12 @@ export const LandingPage: React.FC = () => {
       <section id="how-it-works" className="py-20 bg-white border-y border-gray-200/50">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center max-w-2xl mx-auto mb-16 space-y-3">
-            <h2 className="text-[11px] font-bold tracking-widest text-[#1A5C3A] uppercase font-sans">{t('Operational Flow')}</h2>
+            <h2 className="text-[11px] font-bold tracking-widest text-[#1A5C3A] uppercase font-sans">Operational Flow</h2>
             <h3 className="text-3xl font-bold text-gray-900 tracking-tight">
-              {t('Simplified Transactions in 4 Steps')}
+              Simplified Transactions in 4 Steps
             </h3>
             <p className="text-gray-600 text-sm leading-relaxed">
-              {t('Designed to take less than 3 seconds per employee scan to ensure fast moving lines during high-traffic lunch hours.')}
+              Designed to take less than 3 seconds per employee scan to ensure fast moving lines during high-traffic lunch hours.
             </p>
           </div>
 
@@ -607,9 +602,9 @@ export const LandingPage: React.FC = () => {
               <div className="w-14 h-14 rounded-full bg-[#E2F0E7] text-[#1A5C3A] border border-[#C5E2CF] flex items-center justify-center font-bold text-lg mb-6 group-hover:scale-105 transition-transform duration-300">
                 1
               </div>
-              <h4 className="text-base font-bold text-gray-900 mb-2">{t('Verify Employee')}</h4>
+              <h4 className="text-base font-bold text-gray-900 mb-2">Verify Employee</h4>
               <p className="text-xs text-gray-500 max-w-[200px] leading-relaxed">
-                {t('Employee places their finger on the terminal scanner at the start of the queue.')}
+                Employee places their finger on the terminal scanner at the start of the queue.
               </p>
             </div>
 
@@ -618,9 +613,9 @@ export const LandingPage: React.FC = () => {
               <div className="w-14 h-14 rounded-full bg-[#E2F0E7] text-[#1A5C3A] border border-[#C5E2CF] flex items-center justify-center font-bold text-lg mb-6 group-hover:scale-105 transition-transform duration-300">
                 2
               </div>
-              <h4 className="text-base font-bold text-gray-900 mb-2">{t('Select Session Menu')}</h4>
+              <h4 className="text-base font-bold text-gray-900 mb-2">Select Session Menu</h4>
               <p className="text-xs text-gray-500 max-w-[200px] leading-relaxed">
-                {t('The Cashier selects the active meal session and matches the custom menu item.')}
+                The Cashier selects the active meal session and matches the custom menu item.
               </p>
             </div>
 
@@ -629,9 +624,9 @@ export const LandingPage: React.FC = () => {
               <div className="w-14 h-14 rounded-full bg-[#E2F0E7] text-[#1A5C3A] border border-[#C5E2CF] flex items-center justify-center font-bold text-lg mb-6 group-hover:scale-105 transition-transform duration-300">
                 3
               </div>
-              <h4 className="text-base font-bold text-gray-900 mb-2">{t('Validate Duplication')}</h4>
+              <h4 className="text-base font-bold text-gray-900 mb-2">Validate Duplication</h4>
               <p className="text-xs text-gray-500 max-w-[200px] leading-relaxed">
-                {t('The system checks eligibility rules and duplication records instantly.')}
+                The system checks eligibility rules and duplication records instantly.
               </p>
             </div>
 
@@ -640,9 +635,9 @@ export const LandingPage: React.FC = () => {
               <div className="w-14 h-14 rounded-full bg-[#E2F0E7] text-[#1A5C3A] border border-[#C5E2CF] flex items-center justify-center font-bold text-lg mb-6 group-hover:scale-105 transition-transform duration-300">
                 4
               </div>
-              <h4 className="text-base font-bold text-gray-900 mb-2">{t('Automatic Reports')}</h4>
+              <h4 className="text-base font-bold text-gray-900 mb-2">Automatic Reports</h4>
               <p className="text-xs text-gray-500 max-w-[200px] leading-relaxed">
-                {t('Subsidies are recorded and sent directly to HR for automated payroll deduction exports.')}
+                Subsidies are recorded and sent directly to HR for automated payroll deduction exports.
               </p>
             </div>
 
@@ -655,12 +650,12 @@ export const LandingPage: React.FC = () => {
         <div className="max-w-7xl mx-auto px-6">
 
           <div className="text-center max-w-2xl mx-auto mb-16 space-y-3">
-            <h2 className="text-[11px] font-bold tracking-widest text-[#1A5C3A] uppercase">{t('Information Control')}</h2>
+            <h2 className="text-[11px] font-bold tracking-widest text-[#1A5C3A] uppercase">Information Control</h2>
             <h3 className="text-3xl font-bold text-gray-900 tracking-tight">
-              {t('Actionable Insights & Billing Exports')}
+              Actionable Insights & Billing Exports
             </h3>
             <p className="text-gray-600 text-sm leading-relaxed">
-              {t('Export precise calculation reports for vendor matching and salary deductions.')}
+              Export precise calculation reports for vendor matching and salary deductions.
             </p>
           </div>
 
@@ -679,8 +674,8 @@ export const LandingPage: React.FC = () => {
                   <FileText size={20} />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-gray-900">{t('Payroll Deduction Report')}</h4>
-                  <p className="text-xs text-gray-500 mt-1">{t('Export employee meal cost deductions directly to HR (.xlsx format).')}</p>
+                  <h4 className="text-sm font-bold text-gray-900">Payroll Deduction Report</h4>
+                  <p className="text-xs text-gray-500 mt-1">Export employee meal cost deductions directly to HR (.xlsx format).</p>
                 </div>
               </button>
 
@@ -695,8 +690,8 @@ export const LandingPage: React.FC = () => {
                   <FilePdf size={20} />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-gray-900">{t('Company Payment Report')}</h4>
-                  <p className="text-xs text-gray-500 mt-1">{t('Track total company subsidies and departmental costs over any date range.')}</p>
+                  <h4 className="text-sm font-bold text-gray-900">Company Payment Report</h4>
+                  <p className="text-xs text-gray-500 mt-1">Track total company subsidies and departmental costs over any date range.</p>
                 </div>
               </button>
 
@@ -711,8 +706,8 @@ export const LandingPage: React.FC = () => {
                   <FileText size={20} />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-gray-900">{t('Invoice Verification Report')}</h4>
-                  <p className="text-xs text-gray-500 mt-1">{t('Cross-check external caterer invoices against biometric system logs.')}</p>
+                  <h4 className="text-sm font-bold text-gray-900">Invoice Verification Report</h4>
+                  <p className="text-xs text-gray-500 mt-1">Cross-check external caterer invoices against biometric system logs.</p>
                 </div>
               </button>
             </div>
@@ -724,11 +719,11 @@ export const LandingPage: React.FC = () => {
               <div className="flex items-center justify-between pb-4 border-b border-gray-100">
                 <div>
                   <h4 className="text-base font-bold text-gray-900">
-                    {selectedPreviewReport === 'payroll' && t('Payroll Deduction Log (Preview)')}
-                    {selectedPreviewReport === 'subsidy' && t('Departmental Subsidy Cost Summary')}
-                    {selectedPreviewReport === 'invoice' && t('Invoice Discrepancy Reconciliation')}
+                    {selectedPreviewReport === 'payroll' && 'Payroll Deduction Log (Preview)'}
+                    {selectedPreviewReport === 'subsidy' && 'Departmental Subsidy Cost Summary'}
+                    {selectedPreviewReport === 'invoice' && 'Invoice Discrepancy Reconciliation'}
                   </h4>
-                  <p className="text-xs text-gray-400 mt-0.5">{t('Showing mock export data for verification')}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Showing mock export data for verification</p>
                 </div>
                 <button
                   onClick={() => handleDownloadReport(
@@ -738,7 +733,7 @@ export const LandingPage: React.FC = () => {
                   className="bg-[#1A5C3A] hover:bg-[#15462c] text-white text-xs font-semibold px-4 py-2 rounded transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <FileText size={14} />
-                  {t('Download Sample')}
+                  Download Sample
                 </button>
               </div>
 
@@ -748,27 +743,27 @@ export const LandingPage: React.FC = () => {
                   <table className="w-full text-left text-xs text-gray-600">
                     <thead>
                       <tr className="bg-gray-50 text-gray-500 font-semibold border-b border-gray-100">
-                        <th className="py-2.5 px-3">{t('Employee Name')}</th>
-                        <th className="py-2.5 px-3">{t('ID')}</th>
-                        <th className="py-2.5 px-3 text-center">{t('Meals Count')}</th>
-                        <th className="py-2.5 px-3 text-right">{t('Deduction (ETB)')}</th>
+                        <th className="py-2.5 px-3">Employee Name</th>
+                        <th className="py-2.5 px-3">ID</th>
+                        <th className="py-2.5 px-3 text-center">Meals Count</th>
+                        <th className="py-2.5 px-3 text-right">Deduction (ETB)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                       <tr>
-                        <td className="py-2.5 px-3 font-semibold">{t('Tilahun Gessese')}</td>
+                        <td className="py-2.5 px-3 font-semibold">Tilahun Gessese</td>
                         <td className="py-2.5 px-3 font-mono text-gray-400">EMP-012</td>
                         <td className="py-2.5 px-3 text-center">26</td>
                         <td className="py-2.5 px-3 text-right font-mono">1,040.00</td>
                       </tr>
                       <tr>
-                        <td className="py-2.5 px-3 font-semibold">{t('Mulu Alkene')}</td>
+                        <td className="py-2.5 px-3 font-semibold">Mulu Alkene</td>
                         <td className="py-2.5 px-3 font-mono text-gray-400">EMP-304</td>
                         <td className="py-2.5 px-3 text-center">22</td>
                         <td className="py-2.5 px-3 text-right font-mono">880.00</td>
                       </tr>
                       <tr>
-                        <td className="py-2.5 px-3 font-semibold">{t('Zenebech Bekele')}</td>
+                        <td className="py-2.5 px-3 font-semibold">Zenebech Bekele</td>
                         <td className="py-2.5 px-3 font-mono text-gray-400">EMP-401</td>
                         <td className="py-2.5 px-3 text-center">30</td>
                         <td className="py-2.5 px-3 text-right font-mono">1,200.00</td>
@@ -781,24 +776,24 @@ export const LandingPage: React.FC = () => {
                   <table className="w-full text-left text-xs text-gray-600">
                     <thead>
                       <tr className="bg-gray-50 text-gray-500 font-semibold border-b border-gray-100">
-                        <th className="py-2.5 px-3">{t('Department')}</th>
-                        <th className="py-2.5 px-3 text-center">{t('Active Staff')}</th>
-                        <th className="py-2.5 px-3 text-right">{t('Total Subsidy (ETB)')}</th>
+                        <th className="py-2.5 px-3">Department</th>
+                        <th className="py-2.5 px-3 text-center">Active Staff</th>
+                        <th className="py-2.5 px-3 text-right">Total Subsidy (ETB)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                       <tr>
-                        <td className="py-2.5 px-3 font-semibold">{t('Production & Milling')}</td>
+                        <td className="py-2.5 px-3 font-semibold">Production & Milling</td>
                         <td className="py-2.5 px-3 text-center">480</td>
                         <td className="py-2.5 px-3 text-right font-mono">124,800.00</td>
                       </tr>
                       <tr>
-                        <td className="py-2.5 px-3 font-semibold">{t('Logistics & Drivers')}</td>
+                        <td className="py-2.5 px-3 font-semibold">Logistics & Drivers</td>
                         <td className="py-2.5 px-3 text-center">320</td>
                         <td className="py-2.5 px-3 text-right font-mono">96,400.00</td>
                       </tr>
                       <tr>
-                        <td className="py-2.5 px-3 font-semibold">{t('Administration & Support')}</td>
+                        <td className="py-2.5 px-3 font-semibold">Administration & Support</td>
                         <td className="py-2.5 px-3 text-center">150</td>
                         <td className="py-2.5 px-3 text-right font-mono">45,000.00</td>
                       </tr>
@@ -810,35 +805,35 @@ export const LandingPage: React.FC = () => {
                   <table className="w-full text-left text-xs text-gray-600">
                     <thead>
                       <tr className="bg-gray-50 text-gray-500 font-semibold border-b border-gray-100">
-                        <th className="py-2.5 px-3">{t('Calculation Area')}</th>
-                        <th className="py-2.5 px-3 text-right">{t('Caterer Invoice')}</th>
-                        <th className="py-2.5 px-3 text-right">{t('System Calculation')}</th>
-                        <th className="py-2.5 px-3 text-center">{t('Discrepancy Status')}</th>
+                        <th className="py-2.5 px-3">Calculation Area</th>
+                        <th className="py-2.5 px-3 text-right">Caterer Invoice</th>
+                        <th className="py-2.5 px-3 text-right">System Calculation</th>
+                        <th className="py-2.5 px-3 text-center">Discrepancy Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                       <tr>
-                        <td className="py-2.5 px-3 font-semibold">{t('June Breakfast Session')}</td>
+                        <td className="py-2.5 px-3 font-semibold">June Breakfast Session</td>
                         <td className="py-2.5 px-3 text-right font-mono">42,500.00</td>
                         <td className="py-2.5 px-3 text-right font-mono">42,500.00</td>
                         <td className="py-2.5 px-3 text-center">
-                          <span className="bg-[#E2F0E7] text-[#1A5C3A] text-[9px] px-1.5 py-0.5 rounded font-bold">{t('MATCHED')}</span>
+                          <span className="bg-[#E2F0E7] text-[#1A5C3A] text-[9px] px-1.5 py-0.5 rounded font-bold">MATCHED</span>
                         </td>
                       </tr>
                       <tr>
-                        <td className="py-2.5 px-3 font-semibold">{t('June Lunch Session')}</td>
+                        <td className="py-2.5 px-3 font-semibold">June Lunch Session</td>
                         <td className="py-2.5 px-3 text-right font-mono">148,600.00</td>
                         <td className="py-2.5 px-3 text-right font-mono">148,600.00</td>
                         <td className="py-2.5 px-3 text-center">
-                          <span className="bg-[#E2F0E7] text-[#1A5C3A] text-[9px] px-1.5 py-0.5 rounded font-bold">{t('MATCHED')}</span>
+                          <span className="bg-[#E2F0E7] text-[#1A5C3A] text-[9px] px-1.5 py-0.5 rounded font-bold">MATCHED</span>
                         </td>
                       </tr>
                       <tr>
-                        <td className="py-2.5 px-3 font-semibold">{t('June Dinner Session')}</td>
+                        <td className="py-2.5 px-3 font-semibold">June Dinner Session</td>
                         <td className="py-2.5 px-3 text-right font-mono">68,200.00</td>
                         <td className="py-2.5 px-3 text-right font-mono">67,800.00</td>
                         <td className="py-2.5 px-3 text-center">
-                          <span className="bg-red-50 text-red-600 text-[9px] px-1.5 py-0.5 rounded font-bold">{t('ADJUSTED (+400 ETB)')}</span>
+                          <span className="bg-red-50 text-red-600 text-[9px] px-1.5 py-0.5 rounded font-bold">ADJUSTED (+400 ETB)</span>
                         </td>
                       </tr>
                     </tbody>
@@ -850,7 +845,7 @@ export const LandingPage: React.FC = () => {
               <div className="bg-[#FAFBFD] border border-gray-100 rounded-lg p-3 flex items-center gap-2">
                 <WarningCircle size={16} className="text-[#F5A623]" />
                 <span className="text-[10px] text-gray-500">
-                  {t('Data generated complies with standard audit trail formatting protocols. Exports are ready for Excel / SAP importing tools.')}
+                  Data generated complies with standard audit trail formatting protocols. Exports are ready for Excel / SAP importing tools.
                 </span>
               </div>
 
@@ -870,10 +865,10 @@ export const LandingPage: React.FC = () => {
               {employeesCount}+
             </h4>
             <p className="text-sm font-medium text-green-100 uppercase tracking-wider">
-              {t('Employees Managed per Session')}
+              Employees Managed per Session
             </p>
             <p className="text-xs text-green-200/70">
-              {t('Supporting rapid multi-session registration daily')}
+              Supporting rapid multi-session registration daily
             </p>
           </div>
 
@@ -882,10 +877,10 @@ export const LandingPage: React.FC = () => {
               &lt; {speedVal}s
             </h4>
             <p className="text-sm font-medium text-green-100 uppercase tracking-wider">
-              {t('Verification Processing Speed')}
+              Verification Processing Speed
             </p>
             <p className="text-xs text-green-200/70">
-              {t('Average biometric scan and validation validation time')}
+              Average biometric scan and validation validation time
             </p>
           </div>
 
@@ -894,10 +889,10 @@ export const LandingPage: React.FC = () => {
               {duplicateBlockCount}+
             </h4>
             <p className="text-sm font-medium text-green-100 uppercase tracking-wider">
-              {t('Duplicate Meal Claims Prevented')}
+              Duplicate Meal Claims Prevented
             </p>
             <p className="text-xs text-green-200/70">
-              {t('Automatically caught and blocked at cashier stations')}
+              Automatically caught and blocked at cashier stations
             </p>
           </div>
 
@@ -909,12 +904,12 @@ export const LandingPage: React.FC = () => {
         <div className="max-w-7xl mx-auto px-6">
 
           <div className="text-center max-w-2xl mx-auto mb-16 space-y-3">
-            <h2 className="text-[11px] font-bold tracking-widest text-[#1A5C3A] uppercase font-sans">{t('Role Matrix')}</h2>
+            <h2 className="text-[11px] font-bold tracking-widest text-[#1A5C3A] uppercase font-sans">Role Matrix</h2>
             <h3 className="text-3xl font-bold text-gray-900 tracking-tight">
-              {t('Designed for Cooperative Access Controls')}
+              Designed for Cooperative Access Controls
             </h3>
             <p className="text-gray-600 text-sm leading-relaxed">
-              {t('Enforce transparency with customized modules tailored for distinct cafeteria stakeholders.')}
+              Enforce transparency with customized modules tailored for distinct cafeteria stakeholders.
             </p>
           </div>
 
@@ -924,29 +919,29 @@ export const LandingPage: React.FC = () => {
             <div className="border border-gray-200 rounded-xl p-8 bg-gray-50 flex flex-col justify-between">
               <div>
                 <div className="w-10 h-10 rounded-full bg-[#E2F0E7] text-[#1A5C3A] flex items-center justify-center font-bold text-sm mb-6">
-                  {t('CS')}
+                  CS
                 </div>
-                <h4 className="text-lg font-bold text-gray-900 mb-2">{t('Cashier Terminal Role')}</h4>
+                <h4 className="text-lg font-bold text-gray-900 mb-2">Cashier Terminal Role</h4>
                 <p className="text-xs text-gray-500 leading-relaxed mb-6">
-                  {t('Optimized for fast-paced meal service environments. Minimal clicks required to register transactions.')}
+                  Optimized for fast-paced meal service environments. Minimal clicks required to register transactions.
                 </p>
                 <ul className="space-y-2">
                   <li className="flex items-center gap-2 text-xs text-gray-600">
                     <Check size={12} className="text-[#1A5C3A]" weight="bold" />
-                    {t('Secure biometric scanners link')}
+                    Secure biometric scanners link
                   </li>
                   <li className="flex items-center gap-2 text-xs text-gray-600">
                     <Check size={12} className="text-[#1A5C3A]" weight="bold" />
-                    {t('Register meal & beverage selections')}
+                    Register meal & beverage selections
                   </li>
                   <li className="flex items-center gap-2 text-xs text-gray-600">
                     <Check size={12} className="text-[#1A5C3A]" weight="bold" />
-                    {t('Submit correction requests')}
+                    Submit correction requests
                   </li>
                 </ul>
               </div>
               <div className="mt-8 pt-4 border-t border-gray-200 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                {t('Authorized device log required')}
+                Authorized device log required
               </div>
             </div>
 
@@ -954,29 +949,29 @@ export const LandingPage: React.FC = () => {
             <div className="border border-gray-200 rounded-xl p-8 bg-gray-50 flex flex-col justify-between shadow-sm">
               <div>
                 <div className="w-10 h-10 rounded-full bg-[#FFF2DE] text-[#F5A623] flex items-center justify-center font-bold text-sm mb-6">
-                  {t('AD')}
+                  AD
                 </div>
-                <h4 className="text-lg font-bold text-gray-900 mb-2">{t('Administrator Panel Role')}</h4>
+                <h4 className="text-lg font-bold text-gray-900 mb-2">Administrator Panel Role</h4>
                 <p className="text-xs text-gray-500 leading-relaxed mb-6">
-                  {t('Provides daily operational oversight. Controls personnel registers, pricing history, and adjudicates adjustments.')}
+                  Provides daily operational oversight. Controls personnel registers, pricing history, and adjudicates adjustments.
                 </p>
                 <ul className="space-y-2">
                   <li className="flex items-center gap-2 text-xs text-gray-600">
                     <Check size={12} className="text-[#1A5C3A]" weight="bold" />
-                    {t('Manage Employee profiles & bio keys')}
+                    Manage Employee profiles & bio keys
                   </li>
                   <li className="flex items-center gap-2 text-xs text-gray-600">
                     <Check size={12} className="text-[#1A5C3A]" weight="bold" />
-                    {t('Control prices & menu sessions')}
+                    Control prices & menu sessions
                   </li>
                   <li className="flex items-center gap-2 text-xs text-gray-600">
                     <Check size={12} className="text-[#1A5C3A]" weight="bold" />
-                    {t('Approve or Reject Cashier corrections')}
+                    Approve or Reject Cashier corrections
                   </li>
                 </ul>
               </div>
               <div className="mt-8 pt-4 border-t border-gray-200 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                {t('Full session logging enforced')}
+                Full session logging enforced
               </div>
             </div>
 
@@ -984,29 +979,29 @@ export const LandingPage: React.FC = () => {
             <div className="border border-gray-200 rounded-xl p-8 bg-gray-50 flex flex-col justify-between">
               <div>
                 <div className="w-10 h-10 rounded-full bg-[#EBF3FC] text-[#2B6CB0] flex items-center justify-center font-bold text-sm mb-6">
-                  {t('SA')}
+                  SA
                 </div>
-                <h4 className="text-lg font-bold text-gray-900 mb-2">{t('Super-Admin Console Role')}</h4>
+                <h4 className="text-lg font-bold text-gray-900 mb-2">Super-Admin Console Role</h4>
                 <p className="text-xs text-gray-500 leading-relaxed mb-6">
-                  {t('Total system configuration controls. Manages global settings, user accounts, security roles, and full logs.')}
+                  Total system configuration controls. Manages global settings, user accounts, security roles, and full logs.
                 </p>
                 <ul className="space-y-2">
                   <li className="flex items-center gap-2 text-xs text-gray-600">
                     <Check size={12} className="text-[#1A5C3A]" weight="bold" />
-                    {t('Configure global subsidy ratios')}
+                    Configure global subsidy ratios
                   </li>
                   <li className="flex items-center gap-2 text-xs text-gray-600">
                     <Check size={12} className="text-[#1A5C3A]" weight="bold" />
-                    {t('Audit full system activity logs')}
+                    Audit full system activity logs
                   </li>
                   <li className="flex items-center gap-2 text-xs text-gray-600">
                     <Check size={12} className="text-[#1A5C3A]" weight="bold" />
-                    {t('Create/revoke Administrator accounts')}
+                    Create/revoke Administrator accounts
                   </li>
                 </ul>
               </div>
               <div className="mt-8 pt-4 border-t border-gray-200 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                {t('Multi-Factor authentication enabled')}
+                Multi-Factor authentication enabled
               </div>
             </div>
 
@@ -1020,22 +1015,22 @@ export const LandingPage: React.FC = () => {
 
           <div className="flex items-center gap-2.5 text-gray-400 hover:text-gray-600 transition-colors">
             <Sliders size={24} />
-            <span className="font-bold text-xs uppercase tracking-widest">{t('HR System Ready')}</span>
+            <span className="font-bold text-xs uppercase tracking-widest">HR System Ready</span>
           </div>
 
           <div className="flex items-center gap-2.5 text-gray-400 hover:text-gray-600 transition-colors">
             <FileText size={24} />
-            <span className="font-bold text-xs uppercase tracking-widest">{t('Payroll Export Compatible')}</span>
+            <span className="font-bold text-xs uppercase tracking-widest">Payroll Export Compatible</span>
           </div>
 
           <div className="flex items-center gap-2.5 text-gray-400 hover:text-gray-600 transition-colors">
             <Database size={24} />
-            <span className="font-bold text-xs uppercase tracking-widest">{t('Audit Trail Compliant')}</span>
+            <span className="font-bold text-xs uppercase tracking-widest">Audit Trail Compliant</span>
           </div>
 
           <div className="flex items-center gap-2.5 text-gray-400 hover:text-gray-600 transition-colors">
             <ShieldCheck size={24} />
-            <span className="font-bold text-xs uppercase tracking-widest">{t('99.9% Uptime Guarantee')}</span>
+            <span className="font-bold text-xs uppercase tracking-widest">99.9% Uptime Guarantee</span>
           </div>
 
         </div>
@@ -1050,48 +1045,48 @@ export const LandingPage: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <img src={logo} alt="Derba Logo" className="h-8 w-8 object-contain brightness-110" />
-              <span className="font-bold text-white text-base">{t('CSMS Terminal')}</span>
+              <span className="font-bold text-white text-base">CSMS Terminal</span>
             </div>
             <p className="text-xs leading-relaxed text-gray-500">
-              {t('Biometric verification and cafeteria subsidy auditing solutions.')}
+              Biometric verification and cafeteria subsidy auditing solutions.
             </p>
             <p className="text-[11px] text-[#DDEF94] font-medium font-mono uppercase tracking-wider">
-              {t('Smart Verification, Transparent Subsidies')}
+              Smart Verification, Transparent Subsidies
             </p>
           </div>
 
           {/* Col 2 */}
           <div className="space-y-3">
-            <h4 className="text-xs font-bold text-white uppercase tracking-wider">{t('Product Features')}</h4>
+            <h4 className="text-xs font-bold text-white uppercase tracking-wider">Product Features</h4>
             <ul className="space-y-2 text-xs">
-              <li><button onClick={() => handleNavClick('features')} className="hover:text-white transition-colors cursor-pointer">{t('Biometric Verification')}</button></li>
-              <li><button onClick={() => handleNavClick('features')} className="hover:text-white transition-colors cursor-pointer">{t('Duplicate Claims Blocker')}</button></li>
-              <li><button onClick={() => handleNavClick('how-it-works')} className="hover:text-white transition-colors cursor-pointer">{t('3-Second Scan Flow')}</button></li>
-              <li><button onClick={() => handleNavClick('features')} className="hover:text-white transition-colors cursor-pointer">{t('Offline Database Cache')}</button></li>
+              <li><button onClick={() => handleNavClick('features')} className="hover:text-white transition-colors cursor-pointer">Biometric Verification</button></li>
+              <li><button onClick={() => handleNavClick('features')} className="hover:text-white transition-colors cursor-pointer">Duplicate Claims Blocker</button></li>
+              <li><button onClick={() => handleNavClick('how-it-works')} className="hover:text-white transition-colors cursor-pointer">3-Second Scan Flow</button></li>
+              <li><button onClick={() => handleNavClick('features')} className="hover:text-white transition-colors cursor-pointer">Offline Database Cache</button></li>
             </ul>
           </div>
 
           {/* Col 3 */}
           <div className="space-y-3">
-            <h4 className="text-xs font-bold text-white uppercase tracking-wider">{t('Audit Exports')}</h4>
+            <h4 className="text-xs font-bold text-white uppercase tracking-wider">Audit Exports</h4>
             <ul className="space-y-2 text-xs">
-              <li><button onClick={() => handleNavClick('reports')} className="hover:text-white transition-colors cursor-pointer">{t('Salary Deductions log')}</button></li>
-              <li><button onClick={() => handleNavClick('reports')} className="hover:text-white transition-colors cursor-pointer">{t('Company Subsidies cost')}</button></li>
-              <li><button onClick={() => handleNavClick('reports')} className="hover:text-white transition-colors cursor-pointer">{t('Reconciliation logs')}</button></li>
+              <li><button onClick={() => handleNavClick('reports')} className="hover:text-white transition-colors cursor-pointer">Salary Deductions log</button></li>
+              <li><button onClick={() => handleNavClick('reports')} className="hover:text-white transition-colors cursor-pointer">Company Subsidies cost</button></li>
+              <li><button onClick={() => handleNavClick('reports')} className="hover:text-white transition-colors cursor-pointer">Reconciliation logs</button></li>
             </ul>
           </div>
 
           {/* Col 4 */}
           <div className="space-y-4">
-            <h4 className="text-xs font-bold text-white uppercase tracking-wider">{t('Enterprise Inquiries')}</h4>
+            <h4 className="text-xs font-bold text-white uppercase tracking-wider">Enterprise Inquiries</h4>
             <p className="text-xs text-gray-500 leading-relaxed">
-              {t('Seeking specific integrations for SAP or custom biometric terminals?')}
+              Seeking specific integrations for SAP or custom biometric terminals?
             </p>
             <button
               onClick={() => handleNavClick('contact')}
               className="bg-[#1A5C3A] hover:bg-[#15462c] text-white text-xs font-semibold px-4 py-2.5 rounded shadow-sm transition-colors cursor-pointer"
             >
-              {t('Contact Sales Division')}
+              Contact Sales Division
             </button>
           </div>
 
@@ -1100,8 +1095,8 @@ export const LandingPage: React.FC = () => {
         <div className="max-w-7xl mx-auto px-6 mt-12 pt-8 border-t border-gray-800 flex flex-col sm:flex-row items-center justify-between text-xs text-gray-600 gap-4">
           <p>© 2026 CSMS - Cafeteria Subsidy Management System. All Rights Reserved.</p>
           <div className="flex gap-6">
-            <span className="hover:text-gray-400 cursor-pointer">{t('Terms of Service')}</span>
-            <span className="hover:text-gray-400 cursor-pointer">{t('Security Protocol')}</span>
+            <span className="hover:text-gray-400 cursor-pointer">Terms of Service</span>
+            <span className="hover:text-gray-400 cursor-pointer">Security Protocol</span>
           </div>
         </div>
       </footer>

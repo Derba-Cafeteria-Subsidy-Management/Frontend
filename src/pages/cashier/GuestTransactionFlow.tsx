@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axiosInstance from '../../client/axios';
 import { useApp } from '../../context/AppContext';
-import { useLanguage } from '../../context/LanguageContext';
 import {
   Coffee,
   Sun,
@@ -24,7 +23,6 @@ import toast from 'react-hot-toast';
 import type { Employee, MenuItem } from '../../types/api';
 
 export const GuestTransactionFlow: React.FC = () => {
-  const { t } = useLanguage();
   const { isOffline } = useApp();
 
   // Tabs State
@@ -381,10 +379,10 @@ export const GuestTransactionFlow: React.FC = () => {
         <div>
           <h1 className="text-[28px] font-semibold text-brand-dark-green font-sans leading-none flex items-center gap-2">
             <Receipt size={28} className="text-brand-gold" />
-            {t('Guest Transactions')}
+            Guest Transactions
           </h1>
           <p className="text-brand-gray-neutral text-sm mt-2">
-            {t('Register meals for external guests and audit history')}
+            Register meals for external guests and audit history
           </p>
         </div>
 
@@ -398,7 +396,7 @@ export const GuestTransactionFlow: React.FC = () => {
                 : 'text-gray-500 hover:text-gray-800'
             }`}
           >
-            {t('Register Guest Meal')}
+            Register Guest Meal
           </button>
           <button
             onClick={() => setActiveTab('history')}
@@ -408,7 +406,7 @@ export const GuestTransactionFlow: React.FC = () => {
                 : 'text-gray-500 hover:text-gray-800'
             }`}
           >
-            {t('Guest Transactions History')}
+            Guest Transactions History
           </button>
         </div>
       </div>
@@ -424,7 +422,7 @@ export const GuestTransactionFlow: React.FC = () => {
             <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] space-y-4">
               <h3 className="text-brand-dark-green font-semibold text-sm uppercase tracking-wider flex items-center gap-2">
                 <User size={16} className="text-brand-gold" />
-                1. {t('Inviting Employee')}
+                1. Inviting Employee
               </h3>
 
               {!selectedEmployee ? (
@@ -434,7 +432,7 @@ export const GuestTransactionFlow: React.FC = () => {
                       type="text"
                       value={employeeSearch}
                       onChange={(e) => setEmployeeSearch(e.target.value)}
-                      placeholder={t('Search Employee...')}
+                      placeholder="Search Employee..."
                       className="w-full h-11 px-3 pr-10 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green bg-brand-white placeholder-brand-gray-neutral/60 transition-colors"
                     />
                     <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center">
@@ -513,12 +511,12 @@ export const GuestTransactionFlow: React.FC = () => {
               <div className="space-y-3">
                 <h3 className="text-brand-dark-green font-semibold text-sm uppercase tracking-wider flex items-center gap-2">
                   <Clock size={16} className="text-brand-gold" />
-                  2. {t('Session')}
+                  2. Session
                 </h3>
                 <div className="grid grid-cols-3 gap-2">
                   {(['BREAKFAST', 'LUNCH', 'DINNER'] as const).map((session) => {
                     const isSelected = mealSession === session;
-                    const label = session === 'BREAKFAST' ? t('Breakfast') : session === 'LUNCH' ? t('Lunch') : t('Dinner');
+                    const label = session === 'BREAKFAST' ? 'Breakfast' : session === 'LUNCH' ? 'Lunch' : 'Dinner';
                     const icon = session === 'BREAKFAST' ? <Coffee size={18} /> : session === 'LUNCH' ? <Sun size={18} /> : <Moon size={18} />;
 
                     return (
@@ -544,7 +542,7 @@ export const GuestTransactionFlow: React.FC = () => {
                 <div className="flex justify-between items-center text-sm">
                   <h3 className="text-brand-dark-green font-semibold text-sm uppercase tracking-wider flex items-center gap-2">
                     <List size={16} className="text-brand-gold" />
-                    3. {t('Reason for Visit')}
+                    3. Reason for Visit
                   </h3>
                   <span className={`text-[11px] ${reason.length > 250 ? 'text-brand-error-red font-semibold' : 'text-brand-gray-neutral'}`}>
                     {reason.length}/250
@@ -555,7 +553,7 @@ export const GuestTransactionFlow: React.FC = () => {
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   maxLength={250}
-                  placeholder={t('Enter reason for visit...')}
+                  placeholder="Enter reason for visit..."
                   className="w-full p-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-brand-dark-green text-sm text-brand-dark-green h-24 resize-none placeholder-brand-gray-neutral/60 transition-colors"
                 />
               </div>
@@ -568,7 +566,7 @@ export const GuestTransactionFlow: React.FC = () => {
             <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] space-y-4">
               <h3 className="text-brand-dark-green font-semibold text-sm uppercase tracking-wider flex items-center gap-2 select-none">
                 <Receipt size={16} className="text-brand-gold" />
-                4. {t('Guest Menu Items')}
+                4. Guest Menu Items
               </h3>
 
               {isLoadingMenu ? (
@@ -583,12 +581,12 @@ export const GuestTransactionFlow: React.FC = () => {
                   <div className="space-y-2">
                     <div className="text-xs font-semibold text-brand-gold uppercase tracking-wider border-b border-gray-100 pb-1 flex items-center gap-1 select-none">
                       {getSessionIcon(mealSession)}
-                      <span>{mealSession} {t('Meals')}</span>
+                      <span>{mealSession} Meals</span>
                     </div>
 
                     {sessionMeals.length === 0 ? (
                       <p className="text-xs text-brand-gray-neutral italic py-2">
-                        {t('No guest menu items available for this session')}
+                        No guest menu items available for this session
                       </p>
                     ) : (
                       <div className="divide-y divide-gray-100">
@@ -636,7 +634,7 @@ export const GuestTransactionFlow: React.FC = () => {
                                     onClick={() => handleUpdateCartQuantity(item, 1)}
                                     className="px-3 py-1.5 text-xs font-semibold border border-brand-dark-green text-brand-dark-green rounded-[6px] hover:bg-brand-dark-green/5 cursor-pointer active:scale-95 transition-all"
                                   >
-                                    {t('Add')}
+                                    Add
                                   </button>
                                 )}
                               </div>
@@ -650,7 +648,7 @@ export const GuestTransactionFlow: React.FC = () => {
                   {/* Drinks Group */}
                   <div className="space-y-2">
                     <div className="text-xs font-semibold text-brand-gold uppercase tracking-wider border-b border-gray-100 pb-1 select-none">
-                      🥤 {t('Drinks & Beverages')}
+                      🥤 Drinks & Beverages
                     </div>
 
                     {drinks.length === 0 ? (
@@ -703,7 +701,7 @@ export const GuestTransactionFlow: React.FC = () => {
                                     onClick={() => handleUpdateCartQuantity(item, 1)}
                                     className="px-3 py-1.5 text-xs font-semibold border border-brand-dark-green text-brand-dark-green rounded-[6px] hover:bg-brand-dark-green/5 cursor-pointer active:scale-95 transition-all"
                                   >
-                                    {t('Add')}
+                                    Add
                                   </button>
                                 )}
                               </div>
@@ -721,7 +719,7 @@ export const GuestTransactionFlow: React.FC = () => {
             <div className="bg-brand-white border border-[rgba(50,100,50,0.1)] rounded-[12px] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] space-y-4">
               <div className="flex justify-between items-center select-none">
                 <h3 className="text-brand-dark-green font-semibold text-sm uppercase tracking-wider flex items-center gap-2">
-                  🛒 {t('Items in Cart')} ({getCartTotalQuantity()})
+                  🛒 Items in Cart ({getCartTotalQuantity()})
                 </h3>
                 {cart.length > 0 && (
                   <button
@@ -730,7 +728,7 @@ export const GuestTransactionFlow: React.FC = () => {
                     className="text-xs text-brand-error-red hover:underline flex items-center gap-1 cursor-pointer focus:outline-none"
                   >
                     <Trash size={14} />
-                    {t('Clear Cart')}
+                    Clear Cart
                   </button>
                 )}
               </div>
@@ -765,7 +763,7 @@ export const GuestTransactionFlow: React.FC = () => {
                       <span className="font-mono">{getCartTotalQuantity()}</span>
                     </div>
                     <div className="flex justify-between font-bold text-brand-dark-green text-base border-t border-gray-200 pt-2">
-                      <span>{t('Total Amount')}:</span>
+                      <span>Total Amount:</span>
                       <span className="text-brand-gold font-mono">{getCartTotalAmount().toFixed(2)} ETB</span>
                     </div>
                   </div>
@@ -783,12 +781,12 @@ export const GuestTransactionFlow: React.FC = () => {
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                           </svg>
-                          <span>{t('Submitting...')}</span>
+                          <span>Submitting...</span>
                         </>
                       ) : (
                         <>
                           <Check size={18} weight="bold" />
-                          <span>{t('Submit Guest Transaction')}</span>
+                          <span>Submit Guest Transaction</span>
                         </>
                       )}
                     </button>
@@ -967,7 +965,7 @@ export const GuestTransactionFlow: React.FC = () => {
               <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-brand-dark-green/10 text-brand-dark-green">
                 <Check size={26} weight="bold" />
               </div>
-              <h2 className="text-brand-dark-green font-bold text-lg">{t('Transaction successful!')}</h2>
+              <h2 className="text-brand-dark-green font-bold text-lg">Transaction successful!</h2>
               <p className="text-brand-gray-neutral text-xs">
                 Transaction ID: <span className="font-mono font-semibold">{submittedTransaction.transactionId}</span>
               </p>
@@ -976,7 +974,7 @@ export const GuestTransactionFlow: React.FC = () => {
             {/* Printable Receipt Layout */}
             <div className="bg-gray-50 border border-gray-200 rounded-[8px] p-5 space-y-4 text-xs font-sans">
               <div className="text-center font-bold text-sm text-brand-dark-green uppercase border-b border-dashed border-gray-300 pb-2 select-none">
-                {t('Derba MIDROC Cement Cafeteria')}
+                Derba MIDROC Cement Cafeteria
               </div>
 
               <div className="space-y-1.5">
@@ -987,7 +985,7 @@ export const GuestTransactionFlow: React.FC = () => {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-brand-gray-neutral font-medium">{t('Inviting Employee')}:</span>
+                  <span className="text-brand-gray-neutral font-medium">Inviting Employee:</span>
                   <span className="font-semibold text-brand-dark-green text-right">
                     {submittedTransaction.invitedEmployee?.fullName} ({submittedTransaction.invitedEmployee?.employeeNumber})
                   </span>
@@ -999,13 +997,13 @@ export const GuestTransactionFlow: React.FC = () => {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-brand-gray-neutral font-medium">{t('Session')}:</span>
+                  <span className="text-brand-gray-neutral font-medium">Session:</span>
                   <span className="font-semibold text-brand-dark-green uppercase">
                     {submittedTransaction.session || submittedTransaction.mealSession}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-brand-gray-neutral font-medium">{t('Reason')}:</span>
+                  <span className="text-brand-gray-neutral font-medium">Reason:</span>
                   <span className="font-semibold text-brand-dark-green max-w-[200px] text-right italic break-words">
                     {submittedTransaction.reason}
                   </span>
@@ -1019,7 +1017,7 @@ export const GuestTransactionFlow: React.FC = () => {
                   <span className="font-bold font-mono">{submittedTransaction.totalQuantity}</span>
                 </div>
                 <div className="flex justify-between text-brand-dark-green font-bold text-sm border-t border-gray-200 pt-1.5">
-                  <span>{t('Total Amount')}:</span>
+                  <span>Total Amount:</span>
                   <span className="font-mono text-brand-gold">{(submittedTransaction.totalAmount || 0).toFixed(2)} ETB</span>
                 </div>
               </div>
@@ -1033,14 +1031,14 @@ export const GuestTransactionFlow: React.FC = () => {
                 className="flex-1 h-11 border border-brand-dark-green text-brand-dark-green rounded-[8px] font-semibold text-sm hover:bg-brand-dark-green/5 transition flex items-center justify-center gap-2 cursor-pointer focus:outline-none"
               >
                 <Printer size={16} />
-                {t('Print')}
+                Print
               </button>
               <button
                 type="button"
                 onClick={() => setSubmittedTransaction(null)}
                 className="flex-1 h-11 bg-brand-dark-green text-white rounded-[8px] font-semibold text-sm hover:opacity-90 transition flex items-center justify-center cursor-pointer focus:outline-none"
               >
-                {t('Close')}
+                Close
               </button>
             </div>
 
@@ -1059,7 +1057,7 @@ export const GuestTransactionFlow: React.FC = () => {
             <div className="flex items-center justify-between border-b border-gray-100 pb-3 select-none">
               <h3 className="text-brand-dark-green font-semibold text-[18px] flex items-center gap-2">
                 <Receipt size={22} className="text-brand-gold" />
-                {t('Transaction Receipt')}
+                Transaction Receipt
               </h3>
               <button
                 onClick={() => {
@@ -1084,7 +1082,7 @@ export const GuestTransactionFlow: React.FC = () => {
                 {/* Printable receipt segment */}
                 <div className="bg-gray-50 border border-gray-200 rounded-[8px] p-5 space-y-4 text-xs font-sans">
                   <div className="text-center font-bold text-sm text-brand-dark-green uppercase border-b border-dashed border-gray-300 pb-2 select-none">
-                    {t('Derba MIDROC Cement Cafeteria')}
+                    Derba MIDROC Cement Cafeteria
                   </div>
 
                   {/* Info fields */}
@@ -1100,7 +1098,7 @@ export const GuestTransactionFlow: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-brand-gray-neutral font-medium">{t('Inviting Employee')}:</span>
+                      <span className="text-brand-gray-neutral font-medium">Inviting Employee:</span>
                       <span className="font-semibold text-brand-dark-green text-right">
                         {historyTxnDetail.invitedEmployee?.fullName} ({historyTxnDetail.invitedEmployee?.employeeNumber})
                       </span>
@@ -1112,13 +1110,13 @@ export const GuestTransactionFlow: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-brand-gray-neutral font-medium">{t('Session')}:</span>
+                      <span className="text-brand-gray-neutral font-medium">Session:</span>
                       <span className="font-semibold text-brand-dark-green uppercase">
                         {historyTxnDetail.session || historyTxnDetail.mealSession}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-brand-gray-neutral font-medium">{t('Reason')}:</span>
+                      <span className="text-brand-gray-neutral font-medium">Reason:</span>
                       <span className="font-semibold text-brand-dark-green max-w-[200px] text-right italic break-words">
                         {historyTxnDetail.reason}
                       </span>
@@ -1167,7 +1165,7 @@ export const GuestTransactionFlow: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex justify-between text-brand-dark-green font-bold text-sm border-t border-gray-200 pt-1.5">
-                      <span>{t('Total Amount')}:</span>
+                      <span>Total Amount:</span>
                       <span className="font-mono text-brand-gold">
                         {(historyTxnDetail.totals?.totalCompanyExpense || historyTxnDetail.totalAmount || 0).toFixed(2)} ETB
                       </span>
@@ -1182,7 +1180,7 @@ export const GuestTransactionFlow: React.FC = () => {
                   className="w-full h-11 border border-brand-dark-green text-brand-dark-green rounded-[8px] font-semibold text-sm hover:bg-brand-dark-green/5 transition flex items-center justify-center gap-2 cursor-pointer focus:outline-none"
                 >
                   <Printer size={16} />
-                  {t('Print')}
+                  Print
                 </button>
               </div>
             ) : (

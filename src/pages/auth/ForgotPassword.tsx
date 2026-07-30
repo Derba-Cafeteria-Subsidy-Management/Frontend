@@ -4,10 +4,8 @@ import { EnvelopeSimple, ShieldWarning, ArrowLeft } from '@phosphor-icons/react'
 import toast from 'react-hot-toast';
 import { forgotPasswordRequest } from '../../lib/api/auth';
 import { getErrorMessage } from '../../lib/api/errors';
-import { useLanguage } from '../../context/LanguageContext';
 
 export const ForgotPassword: React.FC = () => {
-  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -16,7 +14,7 @@ export const ForgotPassword: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) {
-      setErrorMsg(t('Please enter your email address.'));
+      setErrorMsg('Please enter your email address.');
       return;
     }
 
@@ -26,7 +24,7 @@ export const ForgotPassword: React.FC = () => {
     try {
       await forgotPasswordRequest(email.trim());
       setSubmitted(true);
-      toast.success(t('Reset email sent. Check your inbox.'));
+      toast.success('Reset email sent. Check your inbox.');
     } catch (error) {
       const status = (error as { status?: number }).status || 500;
       const message = getErrorMessage(status, {
@@ -42,9 +40,9 @@ export const ForgotPassword: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="text-center space-y-2 select-none">
-        <h2 className="text-[20px] font-semibold text-brand-dark-green font-sans">{t('Forgot Password')}</h2>
+        <h2 className="text-[20px] font-semibold text-brand-dark-green font-sans">Forgot Password</h2>
         <p className="text-brand-gray-neutral text-sm">
-          {t("Enter your email and we'll send you a reset link")}
+          Enter your email and we'll send you a reset link
         </p>
       </div>
 
@@ -57,21 +55,21 @@ export const ForgotPassword: React.FC = () => {
 
       {submitted ? (
         <div className="bg-brand-light-green/20 border-l-4 border-brand-light-green p-4 rounded-r-[8px] text-xs text-brand-dark-green space-y-2">
-          <p className="font-semibold">{t('Reset email sent')}</p>
+          <p className="font-semibold">Reset email sent</p>
           <p>
-            {t('If an account exists for')} <span className="font-medium">{email}</span>, {t('you will receive password reset instructions shortly.')}
+            If an account exists for <span className="font-medium">{email}</span>, you will receive password reset instructions shortly.
           </p>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="block text-[13px] font-medium text-brand-dark-green">{t('Email Address')}</label>
+            <label className="block text-[13px] font-medium text-brand-dark-green">Email Address</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={isLoading}
-              placeholder={t('Enter your email')}
+              placeholder="Enter your email"
               autoComplete="email"
               className="w-full h-[44px] px-3 border border-gray-300 rounded-[8px] focus:outline-none focus:border-2 focus:border-brand-dark-green disabled:bg-gray-50 placeholder-brand-gray-neutral/60 text-sm text-brand-dark-green"
             />
@@ -92,12 +90,12 @@ export const ForgotPassword: React.FC = () => {
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                   />
                 </svg>
-                <span>{t('Sending...')}</span>
+                <span>Sending...</span>
               </>
             ) : (
               <>
                 <EnvelopeSimple size={18} />
-                <span>{t('Send Reset Link')}</span>
+                <span>Send Reset Link</span>
               </>
             )}
           </button>
@@ -109,7 +107,7 @@ export const ForgotPassword: React.FC = () => {
         className="flex items-center justify-center gap-1.5 text-brand-gold text-sm font-medium hover:underline"
       >
         <ArrowLeft size={16} />
-        {t('Back to login')}
+        Back to login
       </Link>
     </div>
   );
