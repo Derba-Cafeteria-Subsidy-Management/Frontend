@@ -252,13 +252,44 @@ export const EmployeeManagement: React.FC = () => {
   const fetchSchedulePreview = async () => {
     try {
       const res = await axiosInstance.get('/api/employee-groups/schedule', {
-        params: { from: scheduleDateRange.from, to: scheduleDateRange.to }
+        params: { 
+          from: scheduleDateRange.from, 
+          to: scheduleDateRange.to 
+        }
       });
-      if (res.data?.success && res.data?.data) {
-        setSchedulePreview(res.data.data.schedule || []);
+      
+      if (res.data?.success && Array.isArray(res.data.data)) {
+        // Transform the nested data into flat schedule preview items
+        const transformedSchedule: SchedulePreview[] = [];
+        
+        for (const day of res.data.data) {
+          if (day.firstHalf) {
+            transformedSchedule.push({
+              date: day.date,
+              half: 'FIRST_HALF',
+              groupId: day.firstHalf.groupId || undefined,
+              groupName: day.firstHalf.groupName || undefined
+            });
+          }
+          if (day.secondHalf) {
+            transformedSchedule.push({
+              date: day.date,
+              half: 'SECOND_HALF',
+              groupId: day.secondHalf.groupId || undefined,
+              groupName: day.secondHalf.groupName || undefined
+            });
+          }
+        }
+        
+        setSchedulePreview(transformedSchedule);
+      } else {
+        setSchedulePreview([]);
+        toast.error('No schedule data available');
       }
     } catch (e: any) {
       console.error('Schedule preview error:', e.response?.status);
+      toast.error('Failed to load schedule preview');
+      setSchedulePreview([]);
     }
   };
 
