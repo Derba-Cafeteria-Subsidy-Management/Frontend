@@ -26,12 +26,25 @@ interface PayrollReport {
   companyShare: number;
 }
 
+// Company Payment Report Interface
 interface CompanyPaymentReport {
   total_menu_number: number;
   total_menu_price: number;
+  company_subsidy: number;
+  employee_payment: number;
+  shift_employee_expense: number;
+  invitation_expense: number;
   total_company_share: number;
+  byGroup: CompanyPaymentGroup[];
   transactionFromDate: string;
   transactionToDate: string;
+}
+
+interface CompanyPaymentGroup {
+  groupId: string;
+  groupName: string;
+  count: number;
+  companyShare: number;
 }
 
 type ReportType = 'payroll' | 'company' | 'invoice';
@@ -70,7 +83,6 @@ export const ReportsHub: React.FC = () => {
 
   /**
    * Check if user has permission to view reports
-   * Handles both uppercase and capitalized role formats
    */
   const hasPermission = (): boolean => {
     if (!currentUser) return false;
@@ -134,13 +146,13 @@ export const ReportsHub: React.FC = () => {
     setLoading(true);
 
     try {
-      // Fetch all reports in parallel
+      // Fetch reports in parallel
       const [payrollRes, companyRes] = await Promise.all([
         axiosInstance.get('/api/reports/payroll', {
           params: { from: range.from, to: range.to }
         }).catch((err) => {
-          if (err.response?.status === 404) {
-            console.warn('Payroll report endpoint not found - using local data');
+          if (err.response?.status === 404 || err.response?.status === 401) {
+            console.warn('Payroll report endpoint not available');
             return { data: null };
           }
           throw err;
@@ -148,8 +160,8 @@ export const ReportsHub: React.FC = () => {
         axiosInstance.get('/api/reports/company-payment', {
           params: { from: range.from, to: range.to }
         }).catch((err) => {
-          if (err.response?.status === 404) {
-            console.warn('Company payment endpoint not found - using local data');
+          if (err.response?.status === 404 || err.response?.status === 401) {
+            console.warn('Company payment endpoint not available');
             return { data: null };
           }
           throw err;
@@ -167,7 +179,9 @@ export const ReportsHub: React.FC = () => {
     } catch (error: any) {
       if (error.response?.status === 403) {
         toast.error('You do not have permission to view these reports');
-      } else if (error.response?.status === 404) {
+      } else if (error.response?.status === 401) {
+        console.log('Authentication required for reports');
+      } else if (error.response?.status === 404 || error.response?.status === 400) {
         console.log('Some report endpoints not available, using local data');
       } else {
         console.error('Error fetching reports:', error);
@@ -213,16 +227,13 @@ export const ReportsHub: React.FC = () => {
       if (audienceFilter !== 'ALL') {
         const filtered = [];
         for (const t of list) {
-          // Get the menu item to check its audience
           const menuItem = await db.menuItems.get(t.menuItemId);
           if (menuItem) {
-            // Use type assertion to access audience property
             const itemAudience = (menuItem as any).audience || 'ALL';
             if (itemAudience === audienceFilter || itemAudience === 'ALL') {
               filtered.push(t);
             }
           } else {
-            // If menu item not found, include it (fallback)
             filtered.push(t);
           }
         }
@@ -276,36 +287,56 @@ export const ReportsHub: React.FC = () => {
 
     return Object.values(map).map(item => ({
       ...item,
-      empCost: (item.total || 0) * 0.40,
-      compCost: (item.total || 0) * 0.60
+      employeeShare: (item.total || 0) * 0.40,
+      companyShare: (item.total || 0) * 0.60
     }));
   };
 
   /**
    * Get company payment data from local transactions
    */
-  const getLocalCompanyData = () => {
-    const map: Record<string, { department: string; count: number; total: number }> = {};
+  const getLocalCompanyData = (): CompanyPaymentReport | null => {
+    const map: Record<string, { groupId: string; groupName: string; count: number; total: number }> = {};
 
     transactions.forEach(t => {
-      const dept = t.employeeId?.includes('EMP') ? 'Engineering' : 'Finance';
-      const finalDept = dept || 'Unknown';
+      const groupId = t.employeeId?.includes('EMP') ? 'local-1' : 'local-2';
+      const groupName = t.employeeId?.includes('EMP') ? 'Employees' : 'Guests';
 
-      if (!map[finalDept]) {
-        map[finalDept] = {
-          department: finalDept,
+      if (!map[groupId]) {
+        map[groupId] = {
+          groupId,
+          groupName,
           count: 0,
           total: 0
         };
       }
-      map[finalDept].count += 1;
-      map[finalDept].total += t.price || 0;
+      map[groupId].count += 1;
+      map[groupId].total += t.price || 0;
     });
 
-    return Object.values(map).map(item => ({
-      ...item,
-      compCost: (item.total || 0) * 0.60
+    const byGroup = Object.values(map).map(item => ({
+      groupId: item.groupId,
+      groupName: item.groupName,
+      count: item.count,
+      companyShare: (item.total || 0) * 0.60
     }));
+
+    const totalMenuNumber = byGroup.reduce((sum, g) => sum + g.count, 0);
+    const totalMenuPrice = byGroup.reduce((sum, g) => sum + (g.companyShare / 0.60), 0);
+    const totalCompanyShare = byGroup.reduce((sum, g) => sum + g.companyShare, 0);
+
+    return {
+      total_menu_number: totalMenuNumber,
+      total_menu_price: totalMenuPrice,
+      company_subsidy: totalCompanyShare * 0.5,
+      employee_payment: totalCompanyShare * 0.4,
+      shift_employee_expense: 0,
+      invitation_expense: 0,
+      total_company_share: totalCompanyShare,
+      byGroup,
+      transactionFromDate: startDate,
+      transactionToDate: endDate
+    };
   };
 
   /**
@@ -380,7 +411,6 @@ export const ReportsHub: React.FC = () => {
           return;
       }
 
-      // Call the backend export endpoint
       const response = await axiosInstance.get(endpoint, {
         params: {
           from: range.from,
@@ -389,18 +419,14 @@ export const ReportsHub: React.FC = () => {
         responseType: 'blob',
       });
 
-      // Create filename with date range
       const finalFilename = `report-${activeTab}-${range.from}-${range.to}.xlsx`;
-
-      // Download the file
       downloadFile(response.data, finalFilename);
       toast.success('Excel report downloaded successfully!', { id: loadingToast });
 
     } catch (error: any) {
       console.error('Export error:', error);
 
-      // Fallback: Use local generation if backend export fails
-      if (error.response?.status === 404 || error.response?.status === 500) {
+      if (error.response?.status === 404 || error.response?.status === 500 || error.response?.status === 401) {
         toast.loading('Using local export as fallback...', { id: loadingToast });
         await handleLocalExportExcel(loadingToast);
       } else if (error.response?.status === 403) {
@@ -430,8 +456,8 @@ export const ReportsHub: React.FC = () => {
           { header: 'Employee Name', key: 'name', width: 25 },
           { header: 'Meals Count', key: 'count', width: 15 },
           { header: 'Total Value (ETB)', key: 'total', width: 20 },
-          { header: 'Employee Share (40%)', key: 'empCost', width: 25 },
-          { header: 'Company Share (60%)', key: 'compCost', width: 25 }
+          { header: 'Employee Share (40%)', key: 'employeeShare', width: 25 },
+          { header: 'Company Share (60%)', key: 'companyShare', width: 25 }
         ];
 
         data.forEach((row: any) => {
@@ -440,28 +466,36 @@ export const ReportsHub: React.FC = () => {
             name: row.employeeName || row.name || 'Unknown',
             count: row.mealCount || row.count || 0,
             total: row.totalMealCost || row.total || 0,
-            empCost: row.employeeShare || row.empCost || 0,
-            compCost: row.companyShare || row.compCost || (row.total || 0) * 0.60
+            employeeShare: row.employeeShare || row.empCost || 0,
+            companyShare: row.companyShare || row.compCost || (row.total || 0) * 0.60
           });
         });
       } else if (activeTab === 'company') {
-        const data = companyPayment ? [companyPayment] : getLocalCompanyData();
-        sheet.columns = [
-          { header: 'Department', key: 'department', width: 25 },
-          { header: 'Meals Count', key: 'count', width: 15 },
-          { header: 'Total Value (ETB)', key: 'total', width: 20 },
-          { header: 'Company Subsidy (60%)', key: 'compCost', width: 25 }
-        ];
+        const data = companyPayment || getLocalCompanyData();
+        if (data) {
+          sheet.columns = [
+            { header: 'Metric', key: 'metric', width: 25 },
+            { header: 'Value (ETB)', key: 'value', width: 20 }
+          ];
+          
+          sheet.addRow({ metric: 'Total Meals', value: data.total_menu_number });
+          sheet.addRow({ metric: 'Total Menu Price', value: data.total_menu_price });
+          sheet.addRow({ metric: 'Company Subsidy', value: data.company_subsidy });
+          sheet.addRow({ metric: 'Employee Payment', value: data.employee_payment });
+          sheet.addRow({ metric: 'Shift Employee Expense', value: data.shift_employee_expense });
+          sheet.addRow({ metric: 'Invitation Expense', value: data.invitation_expense });
+          sheet.addRow({ metric: 'Total Company Share', value: data.total_company_share });
 
-        const companyRows = Array.isArray(data) ? data : [data];
-        companyRows.forEach((row: any) => {
-          sheet.addRow({
-            department: row.department || 'All Departments',
-            count: row.total_menu_number ?? row.count ?? 0,
-            total: row.total_menu_price ?? row.total ?? 0,
-            compCost: row.total_company_share ?? row.compCost ?? 0
+          sheet.addRow({});
+          sheet.addRow({ metric: '--- Group Breakdown ---', value: '' });
+          sheet.addRow({ metric: 'Group Name', value: 'Count' });
+          sheet.addRow({ metric: 'Company Share (ETB)', value: '' });
+          
+          data.byGroup.forEach((group: CompanyPaymentGroup) => {
+            sheet.addRow({ metric: group.groupName, value: group.count });
+            sheet.addRow({ metric: '', value: group.companyShare });
           });
-        });
+        }
       } else {
         const data = getLocalInvoiceData();
         sheet.columns = [
@@ -484,7 +518,6 @@ export const ReportsHub: React.FC = () => {
         });
       }
 
-      // Format Sheet Header style
       sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
       sheet.getRow(1).fill = {
         type: 'pattern',
@@ -545,7 +578,6 @@ export const ReportsHub: React.FC = () => {
           return;
       }
 
-      // Call the backend export endpoint with PDF accept header
       const response = await axiosInstance.get(endpoint, {
         params: {
           from: range.from,
@@ -557,7 +589,6 @@ export const ReportsHub: React.FC = () => {
         responseType: 'blob',
       });
 
-      // Check if we got a PDF by checking content-type header
       const contentType = response.headers['content-type'];
       const isPdf = typeof contentType === 'string' && contentType.includes('pdf');
 
@@ -566,7 +597,6 @@ export const ReportsHub: React.FC = () => {
         downloadFile(response.data, finalFilename);
         toast.success('PDF report downloaded successfully!', { id: loadingToast });
       } else {
-        // If backend doesn't support PDF, fallback to local generation
         toast.loading('Using local PDF generation...', { id: loadingToast });
         await handleLocalExportPDF(loadingToast);
       }
@@ -574,8 +604,7 @@ export const ReportsHub: React.FC = () => {
     } catch (error: any) {
       console.error('PDF export error:', error);
 
-      // Fallback: Use local generation
-      if (error.response?.status === 404 || error.response?.status === 500) {
+      if (error.response?.status === 404 || error.response?.status === 500 || error.response?.status === 401) {
         toast.loading('Using local PDF generation as fallback...', { id: loadingToast });
         await handleLocalExportPDF(loadingToast);
       } else if (error.response?.status === 403) {
@@ -595,7 +624,6 @@ export const ReportsHub: React.FC = () => {
       const doc = new jsPDF();
       doc.setFont('Inter', 'normal');
 
-      // Title header
       doc.setFillColor(50, 100, 50);
       doc.rect(0, 0, 210, 30, 'F');
 
@@ -607,7 +635,6 @@ export const ReportsHub: React.FC = () => {
       doc.setFontSize(10);
       doc.text(`Report Type: ${activeTab.toUpperCase()} | Date Range: ${range.from} to ${range.to}`, 15, 22);
       
-      // Add audience filter info
       const audienceLabel = audienceFilter === 'ALL' ? 'All' : audienceFilter === 'EMPLOYEE' ? 'Employees' : 'Guests';
       doc.text(`Audience Filter: ${audienceLabel}`, 15, 28);
 
@@ -637,37 +664,65 @@ export const ReportsHub: React.FC = () => {
             doc.addPage();
             currentY = 20;
           }
-          doc.text(row.employeeId || row.id || 'N/A', 15, currentY);
-          doc.text(row.employeeName || row.name || 'Unknown', 50, currentY);
+          doc.text(String(row.employeeId || row.id || 'N/A'), 15, currentY);
+          doc.text(String(row.employeeName || row.name || 'Unknown'), 50, currentY);
           doc.text(String(row.mealCount || row.count || 0), 110, currentY);
-          doc.text((row.totalMealCost || row.total || 0).toFixed(2), 140, currentY);
-          doc.text((row.employeeShare || row.empCost || 0).toFixed(2), 175, currentY);
+          doc.text(String((row.totalMealCost || row.total || 0).toFixed(2)), 140, currentY);
+          doc.text(String((row.employeeShare || row.empCost || 0).toFixed(2)), 175, currentY);
           currentY += 8;
         });
       } else if (activeTab === 'company') {
-        const data = companyPayment ? [companyPayment] : getLocalCompanyData();
-        doc.setFont('Inter', 'bold');
-        doc.text('Department', 15, currentY);
-        doc.text('Meals', 70, currentY);
-        doc.text('Total (ETB)', 110, currentY);
-        doc.text('Company (60%)', 150, currentY);
+        const data = companyPayment || getLocalCompanyData();
+        if (data) {
+          doc.setFont('Inter', 'bold');
+          doc.text('Metric', 15, currentY);
+          doc.text('Value', 100, currentY);
+          currentY += 6;
+          doc.line(15, currentY - 3, 195, currentY - 3);
+          doc.setFont('Inter', 'normal');
 
-        currentY += 6;
-        doc.line(15, currentY - 3, 195, currentY - 3);
-        doc.setFont('Inter', 'normal');
+          const metrics = [
+            ['Total Meals', data.total_menu_number],
+            ['Total Menu Price', data.total_menu_price],
+            ['Company Subsidy', data.company_subsidy],
+            ['Employee Payment', data.employee_payment],
+            ['Shift Employee Expense', data.shift_employee_expense],
+            ['Invitation Expense', data.invitation_expense],
+            ['Total Company Share', data.total_company_share]
+          ];
 
-        const rows = Array.isArray(data) ? data : [data];
-        rows.forEach((row: any) => {
-          if (currentY > 270) {
-            doc.addPage();
-            currentY = 20;
-          }
-          doc.text(row.department || 'All', 15, currentY);
-          doc.text(String(row.total_menu_number ?? row.count ?? 0), 70, currentY);
-          doc.text(((row.total_menu_price ?? row.total ?? 0)).toFixed(2), 110, currentY);
-          doc.text(((row.total_company_share ?? row.compCost ?? 0)).toFixed(2), 150, currentY);
+          metrics.forEach(([label, value]) => {
+            if (currentY > 270) {
+              doc.addPage();
+              currentY = 20;
+            }
+            doc.text(String(label), 15, currentY);
+            doc.text(typeof value === 'number' ? String(value.toFixed(2)) : String(value), 100, currentY);
+            currentY += 8;
+          });
+
+          currentY += 4;
+          doc.setFont('Inter', 'bold');
+          doc.text('--- Group Breakdown ---', 15, currentY);
           currentY += 8;
-        });
+          doc.text('Group Name', 15, currentY);
+          doc.text('Count', 80, currentY);
+          doc.text('Company Share', 120, currentY);
+          currentY += 6;
+          doc.line(15, currentY - 3, 195, currentY - 3);
+          doc.setFont('Inter', 'normal');
+
+          data.byGroup.forEach((group: CompanyPaymentGroup) => {
+            if (currentY > 270) {
+              doc.addPage();
+              currentY = 20;
+            }
+            doc.text(String(group.groupName), 15, currentY);
+            doc.text(String(group.count), 80, currentY);
+            doc.text(String(group.companyShare.toFixed(2)), 120, currentY);
+            currentY += 8;
+          });
+        }
       } else {
         const data = getLocalInvoiceData();
         doc.setFont('Inter', 'bold');
@@ -687,14 +742,14 @@ export const ReportsHub: React.FC = () => {
             currentY = 20;
           }
           const invAmt = parseFloat(invoiceInputs[row.date] || '0');
-          doc.text(row.date, 15, currentY);
+          doc.text(String(row.date), 15, currentY);
           doc.text(String(row.count), 45, currentY);
-          doc.text(row.compCost.toFixed(2), 70, currentY);
-          doc.text(invAmt.toFixed(2), 115, currentY);
+          doc.text(String(row.compCost.toFixed(2)), 70, currentY);
+          doc.text(String(invAmt.toFixed(2)), 115, currentY);
 
           const disc = invAmt - row.compCost;
           doc.setTextColor(disc !== 0 ? 220 : 0, disc !== 0 ? 38 : 100, disc !== 0 ? 38 : 50);
-          doc.text(disc.toFixed(2), 160, currentY);
+          doc.text(String(disc.toFixed(2)), 160, currentY);
           doc.setTextColor(0, 0, 0);
 
           currentY += 8;
@@ -818,10 +873,11 @@ export const ReportsHub: React.FC = () => {
         <div className="flex border-b border-gray-200 select-none overflow-x-auto">
           <button
             onClick={() => setActiveTab('payroll')}
-            className={`py-3 px-5 text-sm font-semibold border-b-2 transition-all whitespace-nowrap ${activeTab === 'payroll'
-              ? 'border-brand-gold text-brand-dark-green bg-brand-light-green/10'
-              : 'border-transparent text-brand-gray-neutral hover:text-brand-dark-green'
-              }`}
+            className={`py-3 px-5 text-sm font-semibold border-b-2 transition-all whitespace-nowrap ${
+              activeTab === 'payroll'
+                ? 'border-brand-gold text-brand-dark-green bg-brand-light-green/10'
+                : 'border-transparent text-brand-gray-neutral hover:text-brand-dark-green'
+            }`}
           >
             <div className="flex items-center gap-2">
               <Users size={16} />
@@ -830,10 +886,11 @@ export const ReportsHub: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('company')}
-            className={`py-3 px-5 text-sm font-semibold border-b-2 transition-all whitespace-nowrap ${activeTab === 'company'
-              ? 'border-brand-gold text-brand-dark-green bg-brand-light-green/10'
-              : 'border-transparent text-brand-gray-neutral hover:text-brand-dark-green'
-              }`}
+            className={`py-3 px-5 text-sm font-semibold border-b-2 transition-all whitespace-nowrap ${
+              activeTab === 'company'
+                ? 'border-brand-gold text-brand-dark-green bg-brand-light-green/10'
+                : 'border-transparent text-brand-gray-neutral hover:text-brand-dark-green'
+            }`}
           >
             <div className="flex items-center gap-2">
               <CurrencyDollar size={16} />
@@ -842,10 +899,11 @@ export const ReportsHub: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('invoice')}
-            className={`py-3 px-5 text-sm font-semibold border-b-2 transition-all whitespace-nowrap ${activeTab === 'invoice'
-              ? 'border-brand-gold text-brand-dark-green bg-brand-light-green/10'
-              : 'border-transparent text-brand-gray-neutral hover:text-brand-dark-green'
-              }`}
+            className={`py-3 px-5 text-sm font-semibold border-b-2 transition-all whitespace-nowrap ${
+              activeTab === 'invoice'
+                ? 'border-brand-gold text-brand-dark-green bg-brand-light-green/10'
+                : 'border-transparent text-brand-gray-neutral hover:text-brand-dark-green'
+            }`}
           >
             <div className="flex items-center gap-2">
               <FilePdf size={16} />
@@ -872,7 +930,6 @@ export const ReportsHub: React.FC = () => {
           </button>
           <button
             onClick={() => {
-              // Quick download of current report data as JSON
               const range = getPeriodRange();
               const data = {
                 reportType: activeTab,
@@ -959,47 +1016,57 @@ export const ReportsHub: React.FC = () => {
 
               {/* TAB 2: COMPANY SUBSIDY PREVIEW */}
               {activeTab === 'company' && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm border-collapse">
-                    <thead>
-                      <tr className="border-b border-brand-light-green bg-[#F9FAFB]/50 text-[13px] font-medium text-brand-dark-green select-none">
-                        <th className="p-4">Department</th>
-                        <th className="p-4 text-center">Meals Count</th>
-                        <th className="p-4 text-right">Total Cost</th>
-                        <th className="p-4 text-right">Company Share (60%)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {companyPayment ? (
-                        <tr className="hover:bg-brand-light-green/5 transition-colors">
-                          <td className="p-4 font-semibold text-brand-dark-green">All Departments</td>
-                          <td className="p-4 text-center text-brand-dark-green font-semibold">
-                            {companyPayment.total_menu_number ?? 0}
-                          </td>
-                          <td className="p-4 text-right text-brand-dark-green font-mono">
-                            {(companyPayment.total_menu_price ?? 0).toFixed(2)} ETB
-                          </td>
-                          <td className="p-4 text-right text-brand-dark-green font-bold font-mono">
-                            {(companyPayment.total_company_share ?? 0).toFixed(2)} ETB
-                          </td>
+                <div className="space-y-4">
+                  {companyPayment && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-brand-light-green/10 border-b border-brand-light-green">
+                      <div className="text-center">
+                        <p className="text-xs text-brand-gray-neutral">Total Meals</p>
+                        <p className="text-xl font-bold text-brand-dark-green">{companyPayment.total_menu_number}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-brand-gray-neutral">Total Menu Price</p>
+                        <p className="text-xl font-bold text-brand-dark-green">{companyPayment.total_menu_price.toFixed(2)} ETB</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-brand-gray-neutral">Company Subsidy</p>
+                        <p className="text-xl font-bold text-brand-dark-green">{companyPayment.company_subsidy.toFixed(2)} ETB</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-brand-gray-neutral">Total Company Share</p>
+                        <p className="text-xl font-bold text-brand-gold">{companyPayment.total_company_share.toFixed(2)} ETB</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm border-collapse">
+                      <thead>
+                        <tr className="border-b border-brand-light-green bg-[#F9FAFB]/50 text-[13px] font-medium text-brand-dark-green select-none">
+                          <th className="p-4">Group / Department</th>
+                          <th className="p-4 text-center">Meals Count</th>
+                          <th className="p-4 text-right">Company Share (60%)</th>
                         </tr>
-                      ) : getLocalCompanyData().map((row, idx) => (
-                        <tr key={idx} className="hover:bg-brand-light-green/5 transition-colors">
-                          <td className="p-4 font-semibold text-brand-dark-green">{row.department}</td>
-                          <td className="p-4 text-center text-brand-dark-green font-semibold">{row.count}</td>
-                          <td className="p-4 text-right text-brand-dark-green font-mono">{row.total.toFixed(2)} ETB</td>
-                          <td className="p-4 text-right text-brand-dark-green font-bold font-mono">{row.compCost.toFixed(2)} ETB</td>
-                        </tr>
-                      ))}
-                      {!companyPayment && getLocalCompanyData().length === 0 && (
-                        <tr>
-                          <td colSpan={4} className="p-8 text-center text-brand-gray-neutral text-sm">
-                            No company payment data available for the selected period
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {(companyPayment?.byGroup || getLocalCompanyData()?.byGroup || []).map((group: CompanyPaymentGroup) => (
+                          <tr key={group.groupId} className="hover:bg-brand-light-green/5 transition-colors">
+                            <td className="p-4 font-semibold text-brand-dark-green">{group.groupName}</td>
+                            <td className="p-4 text-center text-brand-dark-green font-semibold">{group.count}</td>
+                            <td className="p-4 text-right text-brand-dark-green font-bold font-mono">
+                              {group.companyShare.toFixed(2)} ETB
+                            </td>
+                          </tr>
+                        ))}
+                        {(!companyPayment?.byGroup || companyPayment.byGroup.length === 0) && (
+                          <tr>
+                            <td colSpan={3} className="p-8 text-center text-brand-gray-neutral text-sm">
+                              No company payment data available for the selected period
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
 
@@ -1045,10 +1112,11 @@ export const ReportsHub: React.FC = () => {
                                   />
                                 </div>
                               </td>
-                              <td className={`p-4 text-right font-bold font-mono ${disc === 0
-                                ? 'text-brand-dark-green'
-                                : 'text-brand-error-red bg-brand-error-red/5'
-                                }`}>
+                              <td className={`p-4 text-right font-bold font-mono ${
+                                disc === 0
+                                  ? 'text-brand-dark-green'
+                                  : 'text-brand-error-red bg-brand-error-red/5'
+                              }`}>
                                 {disc.toFixed(2)} ETB
                               </td>
                             </tr>
