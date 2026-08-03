@@ -13,7 +13,6 @@ import {
   CurrencyDollar,
   Coffee,
   Receipt,
-  User,
   Users as UsersIcon,
   Gift
 } from '@phosphor-icons/react';
